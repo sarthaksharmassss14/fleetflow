@@ -82,6 +82,20 @@ class ApiService {
     return this.request('/auth/me');
   }
 
+  async updateProfile(profileData) {
+    return this.request('/auth/update-profile', {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    });
+  }
+
+  async resetPassword(oldPassword, newPassword) {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword }),
+    });
+  }
+
   // Routes API calls
   async optimizeRoute(routeData) {
     return this.request('/routes/optimize', {
@@ -116,6 +130,13 @@ class ApiService {
     });
   }
 
+  async completeRoute(routeId) {
+    return this.request(`/routes/${routeId}`, {
+         method: 'PATCH',
+         body: JSON.stringify({ status: 'completed' })
+    });
+  }
+
   async reoptimizeRoute(routeId, trafficData, weatherData) {
     return this.request(`/routes/${routeId}/reoptimize`, {
       method: 'POST',
@@ -129,9 +150,20 @@ class ApiService {
     });
   }
 
+  async getWeather(address, lat, lon) {
+    let url = `/routes/weather?address=${encodeURIComponent(address || '')}`;
+    if (lat && lon) url += `&lat=${lat}&lon=${lon}`;
+    return this.request(url);
+  }
+
   // Users API
   async getUsers() {
     return this.request('/users');
+  }
+
+  // AI Intelligence API
+  async getFleetAnalysis() {
+    return this.request('/routes/analysis');
   }
 
   // Health check

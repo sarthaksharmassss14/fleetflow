@@ -111,12 +111,7 @@ router.post("/login", async (req, res) => {
 
 // Get current user
 router.get("/me", authenticate, async (req, res) => {
-  // AUTO-FIX: If user is stuck as 'driver' in dev, promote to 'dispatcher'
-  if (req.user.role === 'driver') {
-     console.log(`[AUTO-FIX] Promoting user ${req.user.email} from driver to dispatcher`);
-     req.user.role = 'dispatcher';
-     await req.user.save();
-  }
+
 
   res.json({
     success: true,
@@ -130,6 +125,46 @@ router.get("/me", authenticate, async (req, res) => {
       },
     },
   });
+});
+
+// Update Profile
+router.put("/update-profile", authenticate, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const user = await User.findById(req.user._id);
+    
+    if (name) user.name = name;
+    if (email) user.email = email;
+    
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      data: { user: { id: user._id, name: user.name, email: user.email, role: user.role } }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Reset Password
+router.post("/reset-password", authenticate, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const user = await User.findById(req.user._id);
+    
+    if (!await user.comparePassword(oldPassword)) {
+      return res.status(400).json({ success: false, message: "Incorrect current password" });
+    }
+    
+    user.passwordHash = newPassword; // Will be hashed by pre-save hook
+    await user.save();
+    
+    res.json({ success: true, message: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 export default router;

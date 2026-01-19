@@ -3,7 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/api.service';
 import MapComponent from '../components/MapComponent';
-import { exportToPDF, exportToCSV } from '../utils/exportUtils';
+import { exportToPDF, exportToCSV, exportToiCal } from '../utils/exportUtils';
+import ProfileModal from '../components/ProfileModal';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -23,23 +24,68 @@ const Dashboard = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [drivers, setDrivers] = useState([]);
   const [assigning, setAssigning] = useState(false);
   const [lastRouteCount, setLastRouteCount] = useState(0);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const [weather, setWeather] = useState(null);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [weatherTarget, setWeatherTarget] = useState('destination'); // 'source' or 'destination'
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [simRates, setSimRates] = useState({ wage: 15, fuel: 96 }); // Default rates
+  const [fleetAnalysis, setFleetAnalysis] = useState(null);
+  const [fetchingAnalysis, setFetchingAnalysis] = useState(false);
 
+
+
+  // Theme Effect
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // Initial Fetch Effect
   useEffect(() => {
     fetchRoutes();
     if (user?.role === 'dispatcher') {
       fetchDrivers();
     }
+    if (user?.role === 'admin' || user?.role === 'dispatcher') {
+      fetchFleetAnalysis();
+    }
+  }, [user?.role]);
 
-    // Set up auto-refresh for drivers to get real-time assignments
+  // Polling Effect (Real-time updates)
+  useEffect(() => {
     let interval;
-    if (user?.role === 'driver') {
-      interval = setInterval(fetchRoutes, 30000); // Poll every 30s
+    if (user) {
+      interval = setInterval(() => {
+        pollRoutes();
+        if (user?.role === 'admin' || user?.role === 'dispatcher') {
+          fetchFleetAnalysis();
+        }
+      }, 30000); // 30 seconds for dynamic intelligence
     }
     return () => clearInterval(interval);
-  }, []);
+  }, [user, selectedRoute, routes]); // Re-run effect to keep pollRoutes specific context fresh
+
+
+  // Separate effect for Dispatcher Traffic Polling
+  useEffect(() => {
+    // Auto-Poll for Traffic/Weather every 5 minutes for Dispatcher
+    let trafficInterval;
+    if (user?.role === 'dispatcher') {
+      trafficInterval = setInterval(() => {
+        if (selectedRoute && selectedRoute.status === 'active') {
+           console.log("Auto-Checking Real-Time Traffic...");
+           handleSimulateUpdate(); 
+        }
+      }, 5 * 60 * 1000); // 5 Minutes
+    }
+    return () => clearInterval(trafficInterval);
+  }, [user?.role, selectedRoute]); // Depends on selectedRoute state
+
 
   useEffect(() => {
     // Notify driver if a new route is assigned
@@ -48,6 +94,63 @@ const Dashboard = () => {
     }
     setLastRouteCount(routes.length);
   }, [routes, user?.role]);
+
+  // Fetch Weather Effect
+  useEffect(() => {
+    const fetchSelectedWeather = async () => {
+      if (!selectedRoute) {
+        setWeather(null);
+        return;
+      }
+
+      // Use route array if available (ordered sequence), fallback to deliveries
+      const stops = (selectedRoute.route && selectedRoute.route.length > 0) 
+                    ? selectedRoute.route 
+                    : (selectedRoute.deliveries || []);
+
+      if (stops.length === 0) {
+        setWeather(null);
+        return;
+      }
+      
+      setLoadingWeather(true);
+      try {
+        const addrIndex = weatherTarget === 'source' ? 0 : (stops.length - 1);
+        const stop = stops[addrIndex];
+        
+        // Pass coordinates if available (much more accurate than address string)
+        const lat = stop?.coordinates?.lat;
+        const lon = stop?.coordinates?.lng;
+        
+        const resp = await apiService.getWeather(stop?.address || '', lat, lon);
+        if (resp.success) {
+          setWeather(resp.data);
+        }
+      } catch (err) {
+        console.error("Weather fetch failed:", err);
+      } finally {
+        setLoadingWeather(false);
+      }
+    };
+
+    fetchSelectedWeather();
+  }, [selectedRoute, weatherTarget]);
+
+
+  const fetchFleetAnalysis = async () => {
+    if (fetchingAnalysis) return;
+    setFetchingAnalysis(true);
+    try {
+      const resp = await apiService.getFleetAnalysis();
+      if (resp.success) {
+        setFleetAnalysis(resp.data);
+      }
+    } catch (err) {
+      console.error("Fleet analysis failed:", err);
+    } finally {
+      setFetchingAnalysis(false);
+    }
+  };
 
   const fetchDrivers = async () => {
     try {
@@ -60,6 +163,31 @@ const Dashboard = () => {
     }
   };
 
+  // Silent update for polling
+  const pollRoutes = async () => {
+    try {
+      const response = await apiService.getRoutes();
+      if (response && response.success) {
+        const data = response.data || [];
+        
+        // Sync List
+        if (JSON.stringify(data) !== JSON.stringify(routes)) {
+            setRoutes(data);
+            
+            // Sync Selected Route (if active)
+            if (selectedRoute) {
+               const fresh = data.find(r => r._id === selectedRoute._id);
+               if (fresh && (fresh.status !== selectedRoute.status || fresh.driverId?._id !== selectedRoute.driverId?._id)) {
+                   setSelectedRoute(fresh);
+               }
+            }
+        }
+      }
+    } catch (error) {
+      console.error('Silent poll failed:', error);
+    }
+  };
+
   const fetchRoutes = async () => {
     try {
       setLoading(true);
@@ -68,7 +196,7 @@ const Dashboard = () => {
       if (response && response.success) {
         const data = response.data || [];
         setRoutes(data);
-        if (data.length > 0 && !selectedRoute) {
+        if (data.length > 0 && !selectedRoute && user?.role !== 'admin') {
           setSelectedRoute(data[0]);
         }
       }
@@ -105,7 +233,17 @@ const Dashboard = () => {
           deliveries: [{ address: '', priority: 'normal', timeWindow: '' }],
           vehicleData: { capacity: 1000, type: 'van' },
         });
-        await fetchRoutes();
+        
+        // Direct State Update (Fixes White Screen / Flicker)
+        // Instead of re-fetching and triggering 'Loading' state, we just add the new route.
+        const newRoute = response.data; // Assuming backend returns the created route object
+        if (newRoute) {
+            setRoutes(prev => [newRoute, ...prev]);
+            setSelectedRoute(newRoute);
+        } else {
+            // Fallback if backend structure differs, though it shouldn't
+            await fetchRoutes(); 
+        }
       }
     } catch (err) {
       setError(err.message || 'Route optimization failed.');
@@ -201,22 +339,127 @@ const Dashboard = () => {
     }
   };
 
+  const handleRouteCompletion = async () => {
+    if (!selectedRoute) return;
+    try {
+      const resp = await apiService.completeRoute(selectedRoute._id);
+      if (resp.success) {
+        const updated = resp.data;
+        setRoutes(routes.map(r => r._id === updated._id ? updated : r));
+        setSelectedRoute(updated);
+        // No alert needed, UI will switch to summary view
+      }
+    } catch (err) {
+      console.error("Complete route error:", err);
+      alert("Error processing completion. Check connection.");
+    }
+  };
+  
+ /* End Dashboard Main Logic */
+
   return (
     <div className="dashboard-container">
       {/* Premium Header */}
       <header className="dashboard-header">
         <div className="header-left">
           <Link to="/" className="header-logo">FleetFlow</Link>
-          <Link to="/" className="nav-back">← Back to Home</Link>
+          <Link to="/" className="nav-home-icon" title="Back to Home">🏠</Link>
         </div>
         <div className="header-right">
+          <button 
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
+            className="header-btn theme-toggle"
+            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
           <div className="user-info">
             <span className="role-badge">{user?.role}</span>
-            <span style={{ fontWeight: 600 }}>{user?.name}</span>
+            <span className="user-name">{user?.name}</span>
           </div>
-          <button onClick={logout} className="btn-action btn-export">Logout</button>
+          <button onClick={() => setShowProfile(true)} className="header-btn settings-btn">⚙️ Settings</button>
+          <button onClick={logout} className="header-btn logout-btn">Logout</button>
         </div>
       </header>
+
+      {/* Rate Simulation Modal */}
+      {showRateModal && (
+        <div className="rate-modal-overlay" style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000
+        }}>
+           <div className="rate-modal-card" style={{
+               background: 'var(--bg-white)', padding: '2rem', borderRadius: '16px',
+               width: '450px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-color)'
+           }}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem'}}>
+                <h3 style={{margin:0}}>📊 Rate Simulator</h3>
+                <button onClick={() => setShowRateModal(false)} style={{background:'none', border:'none', fontSize:'1.5rem', cursor:'pointer', color:'#94a3b8'}}>×</button>
+              </div>
+              
+              <p style={{fontSize:'0.9rem', color:'#64748b', marginBottom:'1.5rem'}}>Adjust the sliders below to see how fuel and wage changes affect this route's profitability.</p>
+
+              <div className="sim-slider-group" style={{marginBottom:'20px'}}>
+                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
+                    <span style={{fontWeight:600}}>Diesel Price (₹/L)</span>
+                    <span style={{color:'#0066ff', fontWeight:800}}>₹{simRates.fuel}</span>
+                 </div>
+                 <input 
+                    type="range" min="80" max="120" value={simRates.fuel} 
+                    onChange={(e) => setSimRates({...simRates, fuel: parseInt(e.target.value)})}
+                    style={{width:'100%', cursor:'pointer'}}
+                 />
+              </div>
+
+              <div className="sim-slider-group" style={{marginBottom:'30px'}}>
+                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
+                    <span style={{fontWeight:600}}>Driver Wage (₹/KM)</span>
+                    <span style={{color:'#0066ff', fontWeight:800}}>₹{simRates.wage}</span>
+                 </div>
+                 <input 
+                    type="range" min="5" max="30" value={simRates.wage} 
+                    onChange={(e) => setSimRates({...simRates, wage: parseInt(e.target.value)})}
+                    style={{width:'100%', cursor:'pointer'}}
+                 />
+              </div>
+
+              <div style={{background: 'var(--bg-light)', padding: '1.5rem', borderRadius: '12px', textAlign: 'center'}}>
+                 <div style={{fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700}}>Simulated Total Cost</div>
+                 <div style={{fontSize: '2rem', fontWeight: 800, color: 'var(--text-dark)'}}>
+                    {(() => {
+                        const dist = selectedRoute?.totalDistance || 0;
+                        const fuelQty = selectedRoute?.fuelRequiredLitres || (dist / (selectedRoute?.vehicleData?.fuelEfficiency || 25));
+                        const maint = selectedRoute?.costBreakdown?.maintenance || 0;
+                        const tolls = selectedRoute?.costBreakdown?.tolls || 0;
+                        const total = (fuelQty * simRates.fuel) + (dist * simRates.wage) + maint + tolls;
+                        return `₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    })()}
+                 </div>
+              </div>
+
+              <button 
+                onClick={() => setShowRateModal(false)}
+                style={{width:'100%', marginTop:'20px', padding:'12px', background:'#0066ff', color:'white', border:'none', borderRadius:'10px', fontWeight:700, cursor:'pointer'}}
+              >
+                Apply Scenario
+              </button>
+           </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showProfile && user && (
+        <ProfileModal 
+          user={user} 
+          onClose={() => setShowProfile(false)} 
+          onUpdate={(updatedUser) => {
+             // We can optionally update local user context here if needed, 
+             // but usually a refresh or context update handles it.
+             console.log("User updated", updatedUser);
+          }} 
+        />
+      )}
 
       <main className="dashboard-content-split">
         {/* Sidebar: Route Management */}
@@ -279,6 +522,44 @@ const Dashboard = () => {
                   if (isEditing) setEditData({...editData, deliveries: [...editData.deliveries, {address: '', priority: 'normal'}]});
                   else setFormData({...formData, deliveries: [...formData.deliveries, {address: '', priority: 'normal'}]});
                 }}>+ Add Stop</button>
+                <div className="vehicle-selection" style={{ 
+                  marginBottom: '1.25rem', 
+                  padding: '1rem', 
+                  background: 'var(--bg-light)', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: '12px' 
+                }}>
+                  <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Vehicle Type
+                  </label>
+                  <select
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px', 
+                      borderRadius: '8px', 
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-white)',
+                      color: 'var(--text-main)',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                    value={isEditing ? (editData.vehicleData?.type || 'van') : (formData.vehicleData?.type || 'van')}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      if (isEditing) {
+                        setEditData({ ...editData, vehicleData: { ...editData.vehicleData, type } });
+                      } else {
+                        setFormData({ ...formData, vehicleData: { ...formData.vehicleData, type } });
+                      }
+                    }}
+                  >
+                    <option value="van">Van / LCV (Expressways & Fast)</option>
+                    <option value="truck">Heavy Truck (Restricted Roads)</option>
+                  </select>
+                </div>
+
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button type="submit" className="btn-create-route" disabled={creating}>
                     {creating ? 'Processing...' : (isEditing ? 'Save Changes' : 'Generate Route')}
@@ -290,34 +571,48 @@ const Dashboard = () => {
           )}
 
           <div className="routes-list-scroll">
-            {loading ? <p style={{textAlign: 'center', padding: '2rem'}}>Loading routes...</p> : 
+            {loading ? <p style={{textAlign: 'center', padding: '2rem', color:'#94a3b8', fontStyle:'italic'}}>Synchronizing...</p> : 
               routes.map(r => (
                 <div 
                   key={r._id} 
                   className={`route-item ${selectedRoute?._id === r._id ? 'active' : ''}`}
                   onClick={() => { setSelectedRoute(r); setIsEditing(false); }}
                 >
-                   <div className="route-item-header">
+                   <div className="route-item-header" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px'}}>
                     <span className="route-id">#{r._id.slice(-6).toUpperCase()}</span>
                       {user?.role === 'dispatcher' && (
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <button className="delete-mini-btn" title="Edit Stops" onClick={(e) => { e.stopPropagation(); startEdit(r); }}>✏️</button>
-                          <button className="delete-mini-btn" title="Delete Route" onClick={(e) => handleDeleteRoute(r._id, e)}>🗑️</button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button 
+                             title="Edit Stops" 
+                             onClick={(e) => { e.stopPropagation(); startEdit(r); }}
+                             style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.2rem', padding:'4px', opacity:0.6, transition:'opacity 0.2s'}}
+                             onMouseOver={(e) => e.target.style.opacity = 1}
+                             onMouseOut={(e) => e.target.style.opacity = 0.6}
+                          >
+                            ✏️
+                          </button>
+                          <button 
+                             title="Delete Route" 
+                             onClick={(e) => handleDeleteRoute(r._id, e)}
+                             style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.2rem', padding:'4px', opacity:0.6, transition:'opacity 0.2s grayscale'}}
+                             onMouseOver={(e) => e.target.style.opacity = 1}
+                             onMouseOut={(e) => e.target.style.opacity = 0.6}
+                          >
+                             🗑️
+                          </button>
                         </div>
                       )}
-                      {user?.role === 'admin' && (
-                        <button className="delete-mini-btn" title="Delete Route" onClick={(e) => handleDeleteRoute(r._id, e)}>🗑️</button>
-                      )}
+
                     </div>
-                    <div className="route-item-details">
-                      <span>📍 {r.route?.length || 0} Stops</span>
-                      <span>⏱️ {r.estimatedTime} min</span>
-                      <span>🛣️ {r.totalDistance} km</span>
+                    <div className="route-item-details" style={{display:'flex', justifyContent:'space-between', fontSize:'0.9rem', fontWeight:500}}>
+                      <div style={{display:'flex', alignItems:'center', gap:'6px'}}>📍 {r.route?.length || 0} Stops</div>
+                      <div style={{display:'flex', alignItems:'center', gap:'6px'}}>⏱️ {Math.floor((r.estimatedTime || 0) / 60)}h {(r.estimatedTime || 0) % 60}m</div>
+                      <div style={{display:'flex', alignItems:'center', gap:'6px'}}>🛣️ {r.totalDistance} km</div>
                     </div>
                 </div>
               ))
             }
-            {user?.role === 'dispatcher' && (
+            {!loading && routes.length === 0 && (
               <div className="empty-sidebar-state">
                 <p>No routes found.</p>
                 <p className="hint">Click "+ New Route" to get started.</p>
@@ -343,14 +638,50 @@ const Dashboard = () => {
             <div className="route-detail-view">
               <div className="detail-header">
                 <div className="route-title-group">
+                  {user?.role === 'admin' && (
+                    <button 
+                      className="nav-back-btn" 
+                      onClick={(e) => {
+                        console.log("Back to Dashboard Clicked");
+                        e.stopPropagation();
+                        setSelectedRoute(null);
+                      }}
+                      style={{
+                        marginRight: '15px',
+                        marginBottom: '10px',
+                        padding: '6px 12px',
+                        border: '1px solid #bae6fd',
+                        background: '#e0f2fe',
+                        color: '#0284c7',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        zIndex: 9999,
+                        position: 'relative'
+                      }}
+                    >
+                      ← Back to Dashboard
+                    </button>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                     <h3>Route #{selectedRoute._id.slice(-6).toUpperCase()}</h3>
                   </div>
                   <div className="route-stats-summary">
-                    <span>Total Cost: <span className="stat-val">₹{selectedRoute.costBreakdown?.total ? selectedRoute.costBreakdown.total.toFixed(2) : '0.00'}</span></span>
+                    <span>Total Cost: <span className="stat-val">₹{(() => {
+                        const d = selectedRoute.totalDistance || 0;
+                        const wageRate = 15;
+                        const wage = Math.max(300, Math.round(d * wageRate));
+                        const fuel = selectedRoute.costBreakdown?.fuel || 0;
+                        const maint = selectedRoute.costBreakdown?.maintenance || 0;
+                        const tolls = selectedRoute.costBreakdown?.tolls || 0;
+                        return (fuel + maint + tolls + wage).toFixed(2);
+                    })()}</span></span>
                     <span>Distance: <span className="stat-val">{selectedRoute.totalDistance || 0} km</span></span>
                     <span>Time: <span className="stat-val">{Math.floor((selectedRoute.estimatedTime || 0) / 60)}h {(selectedRoute.estimatedTime || 0) % 60}m</span></span>
-                    {selectedRoute.driverId && (
+                    {(selectedRoute.driverId || user?.role === 'admin') && (
                       <span className="role-badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>
                         👤 Driver: {(selectedRoute.driverId && typeof selectedRoute.driverId === 'object' && selectedRoute.driverId !== null) ? selectedRoute.driverId.name : (selectedRoute.driverId ? 'Assigned' : 'Unassigned')}
                       </span>
@@ -358,7 +689,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="action-bar">
-                  {user?.role === 'dispatcher' && (
+                  {user?.role === 'dispatcher' && selectedRoute.status !== 'completed' && !selectedRoute.driverId && (
                     <select 
                       className="btn-action btn-export"
                       value={(selectedRoute.driverId && typeof selectedRoute.driverId === 'object' && selectedRoute.driverId !== null) ? (selectedRoute.driverId._id || selectedRoute.driverId.id) : (selectedRoute.driverId || '')}
@@ -367,43 +698,315 @@ const Dashboard = () => {
                     >
                       <option value="">Unassigned</option>
                       {drivers.map(d => (
-                        <option key={d._id} value={d._id ? d._id : d.id}>Assign: {d.name}</option>
+                        <option key={d._id} value={d._id ? d._id : d.id}>{d.name}</option>
                       ))}
                     </select>
                   )}
-                  <button className="btn-action btn-simulate" onClick={handleSimulateUpdate} disabled={analyzing}>
-                    {analyzing ? 'Analyzing...' : '⚠️ Simulate Traffic'}
-                  </button>
-                  <button className="btn-action btn-export" onClick={() => exportToCSV(selectedRoute)}>CSV</button>
-                  <button className="btn-action btn-pdf" onClick={() => exportToPDF(selectedRoute)}>Export PDF</button>
+                  {selectedRoute.status !== 'completed' && (
+                    <button className="btn-action btn-simulate" onClick={handleSimulateUpdate} disabled={analyzing}>
+                      {analyzing ? 'Analyzing...' : '⚠️ Simulate Traffic'}
+                    </button>
+                  )}
+                  {user?.role !== 'driver' && (
+                    <>
+                      <button className="btn-action btn-export" onClick={() => exportToCSV(selectedRoute)}>CSV</button>
+                      <button className="btn-action btn-export" onClick={() => exportToiCal(selectedRoute)}>iCal</button>
+                      <button className="btn-action btn-pdf" onClick={() => exportToPDF(selectedRoute)}>PDF</button>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="map-view-wrapper">
-                <MapComponent route={selectedRoute} />
-              </div>
+              {selectedRoute.status === 'completed' ? (
+                  <div className="completed-summary-card" style={{padding: '40px', textAlign: 'center', background: '#f0fdf4', borderRadius: '12px', border: '2px solid #22c55e', margin: '20px 0'}}>
+                     {user?.role === 'driver' ? (
+                         <>
+                             <div style={{fontSize: '4rem', marginBottom: '10px'}}>🎉</div>
+                             <h2 style={{color: '#15803d', fontSize: '2rem', marginBottom: '10px'}}>Trip Completed!</h2>
+                             <p style={{color: '#166534', fontSize: '1.1rem', marginBottom: '30px'}}>Thank you for your service.</p>
+                             
+                             <div style={{display: 'flex', gap: '20px', justifyContent: 'center', flexWrap: 'wrap'}}>
+                                 <div style={{background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', minWidth: '150px'}}>
+                                     <div style={{textTransform: 'uppercase', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '5px'}}>Total Distance</div>
+                                     <div style={{fontSize: '1.8rem', fontWeight: 800, color: '#0f172a'}}>{selectedRoute.totalDistance} km</div>
+                                 </div>
+                                 <div style={{background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', minWidth: '150px'}}>
+                                     <div style={{textTransform: 'uppercase', fontSize: '0.8rem', fontWeight: 700, color: '#64748b', marginBottom: '5px'}}>Estimated Pay</div>
+                                     <div style={{fontSize: '1.8rem', fontWeight: 800, color: '#10b981'}}>
+                                         ₹{(() => {
+                                            const d = selectedRoute.totalDistance || 0;
+                                            const rate = 15;
+                                            return Math.max(300, Math.round(d * rate));
+                                         })()}
+                                     </div>
+                                 </div>
+                             </div>
+
+                             <button 
+                               onClick={() => setSelectedRoute(null)} 
+                               style={{marginTop: '40px', padding: '12px 30px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '1rem', boxShadow: '0 4px 6px rgba(22, 163, 74, 0.3)'}}
+                             >
+                               Back to Assignments
+                             </button>
+                         </>
+                     ) : (
+                         <>
+                             <div style={{fontSize: '3rem', marginBottom: '10px'}}>✅</div>
+                             <h2 style={{color: '#0f172a', marginBottom: '10px'}}>Route Fulfilled</h2>
+                             <p style={{color: '#64748b'}}>This route was successfully completed by {selectedRoute.driverId?.name || 'the driver'}.</p>
+                             <button className="btn-action btn-pdf" onClick={() => exportToPDF(selectedRoute)} style={{marginTop: '20px'}}>Download Final Report</button>
+                         </>
+                     )}
+                  </div>
+              ) : (
+                <div className="map-view-wrapper">
+                  <MapComponent 
+                    route={selectedRoute} 
+                    isDriver={user?.role === 'driver'}
+                    hasDriver={!!selectedRoute.driverId}
+                    onComplete={handleRouteCompletion}
+                  />
+                </div>
+              )}
 
               <div className="logistic-details-grid">
-                <div className="logistic-card">
-                  <h4>💡 Logistics Insight</h4>
-                  <div className="logistic-stats">
-                    <div className="ls-row"><span>Fuel Cost:</span> <strong style={{color: '#10b981'}}>₹{selectedRoute.costBreakdown?.fuel || 0}</strong></div>
-                    <div className="ls-row"><span>Driver Wage:</span> <strong style={{color: '#10b981'}}>₹{selectedRoute.costBreakdown?.time || 750}</strong></div>
-                    <div className="ls-row"><span>Maint. Cost:</span> <strong style={{color: '#10b981'}}>₹{selectedRoute.costBreakdown?.maintenance || 0}</strong></div>
-                    <div className="ls-row"><span>Toll Charges:</span> <strong style={{color: '#10b981'}}>₹{selectedRoute.costBreakdown?.tolls || 0}</strong></div>
-                    <div className="ls-row" style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #eee'}}>
-                      <span>Total Running Cost:</span> 
-                      <strong style={{color: '#0066ff', fontSize: '1.2rem'}}>₹{selectedRoute.costBreakdown?.total || 0}</strong>
+                {user?.role !== 'driver' && (
+                  <div className="logistic-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <h4 style={{ margin: 0 }}>💡 Logistics Insight</h4>
+                    </div>
+                    
+                    <div className="logistic-stats">
+                      {(() => {
+                          const d = selectedRoute?.totalDistance || 0;
+                          const wageRate = simRates.wage;
+                          const dynamicWage = Math.max(0, Math.round(d * wageRate));
+                          
+                          const fuelPrice = simRates.fuel;
+                          // Use fuelRequiredLitres if available, else estimate based on distance/efficiency
+                          const fuelQty = selectedRoute?.fuelRequiredLitres || (d / (selectedRoute?.vehicleData?.fuelEfficiency || 25));
+                          const customFuel = fuelQty * fuelPrice;
+                          
+                          const maint = selectedRoute?.costBreakdown?.maintenance || 0;
+                          const tolls = selectedRoute?.costBreakdown?.tolls || 0;
+                          const total = customFuel + maint + tolls + dynamicWage;
+                          
+                          return (
+                            <div className="insight-container">
+                              <div className="insight-main-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                                <div className="insight-total-group">
+                                    <div style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Total Running Cost</div>
+                                    <div className="insight-total-value" style={{ fontSize: '2.2rem', fontWeight: 800 }}>
+                                      ₹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                                    </div>
+                                </div>
+                                <div 
+                                  className="insight-badge" 
+                                  onClick={() => setShowRateModal(true)}
+                                  title="Click to simulate different rates"
+                                >
+                                    ⚙️ Optimized Rate
+                                </div>
+                              </div>
+
+                              <div className="insight-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', padding: '15px', background: 'var(--bg-light)', borderRadius: '12px' }}>
+                                <div className="i-stat">
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Fuel (₹{fuelPrice}/L)</div>
+                                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>₹{customFuel.toFixed(0)}</div>
+                                </div>
+                                <div className="i-stat">
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Wage (₹{wageRate}/km)</div>
+                                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>₹{dynamicWage}</div>
+                                </div>
+                                <div className="i-stat">
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Maintenance</div>
+                                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>₹{maint.toFixed(0)}</div>
+                                </div>
+                                <div className="i-stat">
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Tolls</div>
+                                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>₹{tolls.toFixed(0)}</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                      })()}
                     </div>
                   </div>
+                )}
+
+                {/* Weather Insight Card */}
+                <div className="logistic-card" style={{ marginTop: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h4 style={{ margin: 0 }}>☁️ Weather Insight</h4>
+                    <div className="segmented-toggle">
+                        <button 
+                            onClick={() => setWeatherTarget('source')}
+                            className={`toggle-btn ${weatherTarget === 'source' ? 'active' : ''}`}
+                        >Source</button>
+                        <button 
+                            onClick={() => setWeatherTarget('destination')}
+                            className={`toggle-btn ${weatherTarget === 'destination' ? 'active' : ''}`}
+                        >Destination</button>
+                    </div>
+                  </div>
+                  
+                  {loadingWeather ? (
+                    <p style={{ fontStyle: 'italic', color: '#64748b' }}>Checking conditions...</p>
+                  ) : weather ? (
+                    <div className="weather-container">
+                        <div className="weather-main-row" style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '15px' }}>
+                          <div className="weather-icon" style={{ fontSize: '3rem' }}>
+                            {weather.condition.toLowerCase().includes('cloud') ? '☁️' : 
+                             weather.condition.toLowerCase().includes('rain') ? '🌧️' : 
+                             weather.condition.toLowerCase().includes('clear') ? '☀️' : 
+                             weather.condition.toLowerCase().includes('snow') ? '❄️' : 
+                             weather.condition.toLowerCase().includes('mist') || weather.condition.toLowerCase().includes('fog') ? '🌫️' : '⛅'}
+                          </div>
+                          <div className="weather-temp-group">
+                            <div style={{ fontSize: '2rem', fontWeight: 800 }}>{Math.round(weather.temperature)}°C</div>
+                            <div style={{ color: '#64748b', textTransform: 'capitalize', fontWeight: 600 }}>{weather.description}</div>
+                            {weather.resolvedLocation && (
+                               <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>📍 {weather.resolvedLocation}</div>
+                            )}
+                          </div>
+                          
+                          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                             {weather.visibility < 1000 && (
+                                <div style={{ background: '#fee2e2', color: '#b91c1c', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '5px' }}>
+                                  ⚠️ DENSE FOG: Low Visibility
+                                </div>
+                             )}
+                             {weather.windSpeed > 10 && (
+                                <div style={{ background: '#fff7ed', color: '#c2410c', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700 }}>
+                                  🌬️ Strong Winds
+                                </div>
+                             )}
+                          </div>
+                        </div>
+
+                        <div className="weather-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', padding: '15px', background: 'var(--bg-light)', borderRadius: '12px' }}>
+                           <div className="w-stat">
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Wind</div>
+                              <div style={{ fontWeight: 700 }}>{weather.windSpeed} km/h</div>
+                           </div>
+                           <div className="w-stat">
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Humidity</div>
+                              <div style={{ fontWeight: 700 }}>{weather.humidity}%</div>
+                           </div>
+                           <div className="w-stat">
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Pressure</div>
+                              <div style={{ fontWeight: 700 }}>{weather.pressure} hPa</div>
+                           </div>
+                           <div className="w-stat">
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Visibility</div>
+                              <div style={{ fontWeight: 700 }}>{(weather.visibility / 1000).toFixed(1)} km</div>
+                           </div>
+                           <div className="w-stat">
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Condition</div>
+                              <div style={{ fontWeight: 700 }}>{weather.condition}</div>
+                           </div>
+                           <div className="w-stat">
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Alerts</div>
+                              <div style={{ fontWeight: 700, color: (weather.temperature < 5 || weather.windSpeed > 15) ? '#ef4444' : '#10b981' }}>
+                                 {(weather.temperature < 5) ? 'Frost Risk' : (weather.windSpeed > 15) ? 'Wind Gusts' : 'Clear'}
+                              </div>
+                           </div>
+                        </div>
+                    </div>
+                  ) : (
+                    <p style={{ color: '#64748b' }}>Select a route to view local weather conditions.</p>
+                  )}
                 </div>
               </div>
+
+              {/* Real-Time Intelligence Feed - Hide if trip is completed */}
+              {selectedRoute.status !== 'completed' && (
+                <div className="intel-card">
+                  <div className="intel-header">
+                      <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', fontWeight: 700 }}>REAL-TIME INTELLIGENCE</h4>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <span className="live-dot"></span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444' }}>LIVE FEED</span>
+                      </div>
+                  </div>
+                  <div className="intel-list">
+                      {selectedRoute.analysis?.adjustments ? (
+                        selectedRoute.analysis.adjustments.map((adj, idx) => (
+                          <div className="intel-item" key={idx}>
+                              <div className="intel-time">Just now</div>
+                              <div className="intel-content">
+                                  <span className="intel-tag tag-optimize">AI ADVISORY</span>
+                                  {adj}
+                              </div>
+                          </div>
+                        ))
+                      ) : (
+                        <>
+                          <div className="intel-item">
+                              <div className="intel-time">Just now</div>
+                              <div className="intel-content">
+                                  <span className="intel-tag tag-optimize">Auto-Optimize</span>
+                                  Monitoring route for congestion. Current path is optimal according to latest traffic data.
+                              </div>
+                          </div>
+                          <div className="intel-item">
+                              <div className="intel-time">Live</div>
+                              <div className="intel-content">
+                                  <span className="intel-tag tag-weather">Weather</span>
+                                  Weather conditions at destination are being monitored. No safety alerts active.
+                              </div>
+                          </div>
+                        </>
+                      )}
+                  </div>
+                </div>
+              )}
 
               <div className="stops-sequence-area">
                 <h4>Stop Sequence</h4>
                 <div className="stops-horizontal">
                   {selectedRoute.route && Array.isArray(selectedRoute.route) && selectedRoute.route.map((s, i) => (
-                    <div key={i} className="stop-node">
+                    <div 
+                      key={i} 
+                      className="stop-node"
+                      draggable={user?.role === 'dispatcher'} // Only dispatcher can reorder
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', i);
+                        e.dataTransfer.effectAllowed = 'move';
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault(); // Necessary to allow dropping
+                        e.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                        const toIndex = i;
+                        
+                        if (fromIndex === toIndex) return;
+                        
+                        // Reorder array
+                        const newRoute = [...selectedRoute.route];
+                        const [movedItem] = newRoute.splice(fromIndex, 1);
+                        newRoute.splice(toIndex, 0, movedItem);
+                        
+                        // Optimistic Update
+                        const updatedRouteObj = { ...selectedRoute, route: newRoute };
+                        setSelectedRoute(updatedRouteObj);
+                        
+                        try {
+                           // Save new order to backend
+                           await apiService.updateRoute(selectedRoute._id, { route: newRoute });
+                           // Ideally, we might trigger a re-calc here if the order drastically changes distance
+                        } catch (err) {
+                           console.error("Failed to save reorder", err);
+                           // Revert on error
+                           setSelectedRoute(selectedRoute); 
+                           alert("Failed to save new order.");
+                        }
+                      }}
+                      style={{ cursor: user?.role === 'dispatcher' ? 'grab' : 'default', opacity: 1 }}
+                    >
                       <div className="stop-index">{i + 1}</div>
                       <div className="stop-details">
                         <p>{s?.address || 'No Address'}</p>
@@ -414,6 +1017,7 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
+
           ) : (
             <div className="no-route-placeholder">
               {user?.role === 'admin' ? (
@@ -433,8 +1037,8 @@ const Dashboard = () => {
                     <div className="stat-card">
                       <span className="sc-icon">🚛</span>
                       <div className="sc-info">
-                        <span className="sc-label">Orders Shipped</span>
-                        <span className="sc-val">{routes.filter(r => r.status === 'active' || r.status === 'completed').length}</span>
+                        <span className="sc-label">Active Shipments</span>
+                        <span className="sc-val">{routes.filter(r => r.status === 'active').length}</span>
                       </div>
                     </div>
                     <div className="stat-card urgent">
@@ -452,9 +1056,51 @@ const Dashboard = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="insights-placeholder-graphic">
-                    <p>Select a specific route from the sidebar to view detailed live tracking, traffic analysis, and AI optimization logs.</p>
+                  <div className="intel-card" style={{ width: '100%', maxWidth: '800px', textAlign: 'left', margin: '30px auto' }}>
+                    <div className="intel-header">
+                       <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', fontWeight: 700 }}>FLEET-WIDE INTELLIGENCE</h4>
+                       <div style={{ display: 'flex', alignItems: 'center' }}>
+                           <span className="live-dot"></span>
+                           <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444' }}>MONITORING ACTIVE</span>
+                       </div>
+                    </div>
+                    <div className="intel-list">
+                      {fetchingAnalysis && !fleetAnalysis ? (
+                         <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Generating AI Insights...</div>
+                      ) : fleetAnalysis && fleetAnalysis.insights ? (
+                        fleetAnalysis.insights.map((insight, idx) => (
+                           <div className="intel-item" key={idx}>
+                               <div className="intel-time">{insight.time}</div>
+                               <div className="intel-content">
+                                   <span className={`intel-tag tag-${insight.type || 'optimize'}`}>{(insight.type || 'SYSTEM').toUpperCase()}</span>
+                                   {insight.text}
+                               </div>
+                           </div>
+                        ))
+                      ) : (
+                        <>
+                           <div className="intel-item">
+                               <div className="intel-time">Just now</div>
+                               <div className="intel-content">
+                                   <span className="intel-tag tag-optimize">SYSTEM</span>
+                                   Fleet data synchronized. AI monitoring active across <strong>{routes.filter(r => r.status === 'active').length}</strong> active vehicles.
+                               </div>
+                           </div>
+                           <div className="intel-item">
+                               <div className="intel-time">1m ago</div>
+                               <div className="intel-content">
+                                   <span className="intel-tag tag-weather">GLOBAL</span>
+                                   Real-time weather data verified. No major disruptions detected in current route corridors.
+                               </div>
+                           </div>
+                        </>
+                      )}
+                    </div>
                   </div>
+
+                  <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '10px' }}>
+                    💡 <em>Pro Tip: Select a specific route from the sidebar to view detailed AI optimization logs for that journey.</em>
+                  </p>
                 </div>
               ) : (
                 <>

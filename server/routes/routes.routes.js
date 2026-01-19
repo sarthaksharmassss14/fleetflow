@@ -10,10 +10,38 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticate);
 
+// Get weather data for an address
+router.get("/weather", async (req, res) => {
+  try {
+    const { address, lat, lon } = req.query;
+    if (!address && (!lat || !lon)) {
+      return res.status(400).json({ success: false, message: "Address or coordinates are required" });
+    }
+    const weather = await externalService.getWeatherData(address, lat, lon);
+    res.json({ success: true, data: weather });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Analyze fleet status using AI
+router.get("/analysis", async (req, res) => {
+  try {
+    const activeRoutes = await RoutePlan.find({ status: { $ne: 'completed' }, isArchived: { $ne: true } })
+      .populate("driverId", "name");
+      
+    const analysis = await geminiService.analyzeFleetStatus(activeRoutes);
+    res.json({ success: true, data: analysis });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Generate optimized route
 router.post("/optimize", async (req, res) => {
   try {
     const { deliveries, vehicleData, constraints } = req.body;
+    console.log("Optimize Request Body:", JSON.stringify(req.body, null, 2));
 
     if (!deliveries || !Array.isArray(deliveries) || deliveries.length === 0) {
       return res.status(400).json({
@@ -66,12 +94,15 @@ router.get("/", async (req, res) => {
 
     // Route filtering based on user role
     if (req.user.role === "admin" || req.user.role === "dispatcher") {
-       // Admins and Dispatchers see all routes in the system
+       // Admins and Dispatchers see all ACTIVE routes (filter out archived)
+       query.isArchived = { $ne: true };
     } else if (req.user.role === "driver") {
-       // Drivers only see routes explicitly assigned to them
+       // Drivers see routes assigned to them that are not archived
        query.driverId = req.user._id;
+       query.isArchived = { $ne: true };
     } else {
        query.userId = req.user._id;
+       query.isArchived = { $ne: true };
     }
 
     if (status) query.status = status;
@@ -303,13 +334,18 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
-    console.log(`[DELETE] Authorized: User ${req.user._id} (${req.user.role}) deleting route ${req.params.id}`);
-    await RoutePlan.findByIdAndDelete(req.params.id);
-    console.log(`[DELETE] Deleted route ${req.params.id}`);
+    console.log(`[DELETE] Authorized: User ${req.user._id} (${req.user.role}) archiving route ${req.params.id}`);
+    
+    // Soft Delete (Archive) so Driver retains history
+    route.isArchived = true;
+    await route.save();
+    
+    // Legacy: await RoutePlan.findByIdAndDelete(req.params.id);
+    console.log(`[DELETE] Archived route ${req.params.id}`);
 
     res.json({
       success: true,
-      message: "Route deleted successfully",
+      message: "Route deleted (archived) successfully",
     });
   } catch (error) {
     console.error("[DELETE] Error:", error);

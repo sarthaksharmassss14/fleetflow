@@ -30,6 +30,16 @@
   margin-bottom: 1.5rem;
 }
 
+.cta .btn-outline {
+  color: white;
+  border-color: white;
+}
+
+.cta .btn-outline:hover {
+  background: white;
+  color: var(--primary-color);
+}
+
 .cta-note {
   font-size: 0.875rem;
   opacity: 0.8;

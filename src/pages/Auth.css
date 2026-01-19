@@ -3,17 +3,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  background: var(--bg-light);
   padding: 2rem;
 }
 
 .auth-card {
-  background: white;
+  background: var(--bg-white);
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-lg);
   padding: 3rem;
   width: 100%;
   max-width: 450px;
+  border: 1px solid var(--border-color);
 }
 
 .auth-header {
@@ -69,6 +70,8 @@
   font-size: 1rem;
   transition: all 0.3s ease;
   font-family: inherit;
+  background: var(--bg-white);
+  color: var(--text-dark);
 }
 
 .form-group input:focus,
@@ -80,7 +83,8 @@
 
 .form-group select {
   cursor: pointer;
-  background: white;
+  background: var(--bg-white);
+  color: var(--text-dark);
 }
 
 .error-message {

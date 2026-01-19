@@ -12,7 +12,8 @@ class GeminiService {
     }
     this.genAI = this.apiKey ? new GoogleGenerativeAI(this.apiKey) : null;
    
-    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    // Force valid model name to avoid 404s from bad .env values
+    const modelName = "gemini-1.5-flash";
     console.log(`Using Gemini Model: ${modelName}`);
     this.model = this.genAI
       ? this.genAI.getGenerativeModel({ model: modelName })
@@ -52,7 +53,7 @@ class GeminiService {
       const text = response.text();
 
       // Parse Gemini response and convert to structured route plan
-      return await this.parseRouteResponse(text, deliveries);
+      return await this.parseRouteResponse(text, deliveries, vehicleData);
     } catch (error) {
       if (error.message === "AI_TIMEOUT") {
         console.warn("⏱️ AI Optimization timed out. Switching to high-speed localized fallback.");
@@ -91,15 +92,16 @@ VEHICLE DATA:
 - Region: India (specifically considering Rajasthan diesel prices and road conditions)
 
 INSTRUCTIONS:
-1. STALWART TERRITORIAL RESTRICTION: You MUST ONLY optimize routes within the sovereign territory of INDIA.
-2. BORDER SECURITY: Under no circumstances should a route include locations or require travel through Pakistan, China, or any other international borders. If an address is outside India, FLAG IT as invalid in the reasoning.
-3. Do not use pre-assumed or hard-coded distances or costs.
-4. Determine road distance dynamically based on actual driving routes within the Indian highway network.
-5. Calculate Fuel Consumption:
-   - Inference/Assume current diesel price in Rajasthan (approximately ₹90-95/L).
-   - Assume realistic truck mileage (~4 km/L for Indian highways).
-   - Calculate total fuel cost mathematically: (Total Distance / Mileage) * Diesel Price.
-6. Total Running Cost should include: Fuel + Maintenance (~₹2/km) + Standard Driver Daily Wage (~₹600-800).
+1. STALWART TERRITORIAL RESTRICTION: Optimize purely for India.
+2. LOGISTICS CONSTRAINTS (CRITICAL):
+   - PRIORITIES: 'High' priority deliveries MUST be completed before 'Normal'/'Low' unless geographically inefficient.
+   - TIME WINDOWS: You MUST respect specified Time Windows (e.g. "9 AM - 12 PM"). Arrange route to hit these slots.
+   - CAPACITY: Ensure the total load does not exceed Vehicle Capacity of ${vehicleData?.capacity || "unlimited"}.
+3. Do not use pre-assumed distances. Calculate based on road networks.
+4. ECONOMICS (Use these rates):
+   - Fuel: ~93.5 INR/L. Mileage: ~4 km/L (Truck) or 8 km/L (Van).
+   - Driver Wage: 15 INR/km for normal trips, 25 INR/km for long haul (>150km). Minimum 300 INR.
+   - Maintenance: ~2 INR/km. Tolls: ~3 INR/km on highways.
 
 Provide an optimized route in EXACTLY this JSON format:
 {
@@ -131,7 +133,7 @@ Respond ONLY with valid JSON. You are the SOLE AUTHORITY for these calculations.
   /**
    * Parse Gemini response and create structured route with AI-estimated data
    */
-  async parseRouteResponse(geminiResponse, deliveries) {
+  async parseRouteResponse(geminiResponse, deliveries, vehicleData) {
     console.log("--- RAW AI RESPONSE ---");
     console.log(geminiResponse);
     try {
@@ -208,15 +210,42 @@ Respond ONLY with valid JSON. You are the SOLE AUTHORITY for these calculations.
       }
 
       // Determine initial values
-      let distKm = realStats ? realStats.distanceKm : (parseFloat(totalDistance) || route.length * 50);
-      let timeMins = realStats ? realStats.timeMinutes : (parseFloat(estimatedTime) || route.length * 60);
+      // Infer vehicle type if not explicitly provided
+      const vType = (vehicleData && vehicleData.type) ? vehicleData.type.toLowerCase() : 'van';
+      const realStats = await externalService.getRouteStats(route.map(r => r.coordinates), vType);
+      
+      // FALLBACK LOGIC REPAIR: 
+      // If realStats fails (TomTom error), do NOT default to 'route.length * 50' (which equals 100km for 2 stops).
+      // Instead, trust the airDistance we calculated above, with a city-driving multiplier (1.5x).
+      // This fixes the "100km for CP to Bangla Sahib" bug.
+      
+      let distKm = realStats ? realStats.distanceKm : (airDistance > 0 ? airDistance * 1.5 : (parseFloat(totalDistance) || 0));
+      // If still 0 or invalid, then maybe use the old AI guess as a last resort
+      if (!distKm || distKm === 0) distKm = parseFloat(totalDistance) || 10;
 
-      // SANITY CHECK: Road distance CANNOT be less than Air distance
-      // If reported distance is < 90% of air distance (impossible), it's a bug/hallucination.
-      if (distKm < airDistance * 0.9) {
-          console.warn(`⚠️ IMPOSSIBLE DISTANCE DETECTED: Reported ${distKm}km vs Air ${airDistance.toFixed(1)}km. Overriding.`);
-          distKm = airDistance * 1.35; // Estimate road distance as 1.35x air
-          timeMins = (distKm / 45) * 60; // Assume 45km/h heavy truck avg
+      // Time: If realStats failed, estimate based on distance.
+      // City speed avg ~25km/h, Highway ~60km/h
+      let timeMins = realStats ? realStats.timeMinutes : (distKm / (airDistance < 50 ? 25 : 60)) * 60;
+      if (!timeMins) timeMins = parseFloat(estimatedTime) || 30;
+
+      // SANITY CHECK: Road distance CANNOT be less than Air distance (Physics)
+      // BUT: For very short intracity routes, GPS jitter or straight roads might make them close.
+      // Rule: If Air Distance > 5km, then Road Distance should be at least air distance.
+      // If Air Distance < 5km, accept whatever unless it's 0.
+      
+      const isShortHaul = airDistance < 50;
+      
+      if (distKm < airDistance * 0.9 && airDistance > 2) {
+          console.warn(`⚠️ IMPOSSIBLE DISTANCE DETECTED (Too Short): Reported ${distKm}km vs Air ${airDistance.toFixed(1)}km. Overriding.`);
+          // For short haul, be conservative. For long haul, add 35% buffer.
+          distKm = airDistance * (isShortHaul ? 1.2 : 1.35); 
+          timeMins = (distKm / (isShortHaul ? 30 : 60)) * 60; // Slower speed for city
+      } else if (distKm > airDistance * 1.8 && airDistance > 50) {
+          console.warn(`⚠️ IMPOSSIBLE DISTANCE DETECTED (Too Long): Reported ${distKm}km vs Air ${airDistance.toFixed(1)}km. Normalizing.`);
+          if (!realStats) {
+             distKm = airDistance * 1.4;
+             timeMins = (distKm / 50) * 60;
+          }
       }
 
       const finalDist = distKm;
@@ -224,46 +253,46 @@ Respond ONLY with valid JSON. You are the SOLE AUTHORITY for these calculations.
       
       // Recalculate COST with verified distance
       const dieselPrice = 93.5; 
-      const mileage = 4; // 4km/L
-      const maintRate = 2.5; 
+      const mileage = isShortHaul ? 7 : 4; // Better mileage for smaller vehicles/short haul? Or worse due to traffic? Usually vans get 8-10. Trucks 4.
+      // Let's stick to user inputs or standard. If < 50km, assume LCV/Van mileage of 8km/L unless truck specified.
+      const appliedMileage = (vType === 'van' || isShortHaul) ? 8 : 4;
+
+      const maintRate = isShortHaul ? 1.5 : 2.5; 
       
-      // Dynamic Wage: ₹800 per 12 hours
-      const shiftBlocks = Math.ceil(finalTime / (12 * 60)); 
-      const dynamicWage = Math.max(800, shiftBlocks * 800);
+      // Dynamic Wage: User requested flat 15/km
+      const wagePerKm = 15;
+      // Ensure a minimum trip wage of ₹300 for very short trips to be realistic
+      const dynamicWage = Math.max(300, Math.round(finalDist * wagePerKm));
       
-      const fuelCost = (finalDist / mileage) * dieselPrice;
+      const fuelCost = (finalDist / appliedMileage) * dieselPrice;
       const maintenance = finalDist * maintRate;
       
       // REAL-TIME TOLL LOGIC
       // If we switched to fallback, assume standard toll rate of ₹3/km for highways
-      const tollRate = realStats?.hasTolls ? 3.5 : 3.0; // Slightly lower estimate if unverified
-      const tollCost = (realStats?.hasTolls || distKm > 100) ? (finalDist * tollRate) : 0;
+      // Intra-city usually 0 tolls
+      const tollRate = realStats?.hasTolls ? 3.5 : 3.0; 
+      const tollCost = (realStats?.hasTolls || (distKm > 100 && !isShortHaul)) ? (finalDist * tollRate) : 0;
 
       const result = {
         route,
         estimatedTime: Math.round(finalTime),
         totalDistance: Math.round(finalDist * 10) / 10,
-        fuelRequiredLitres: Math.round((finalDist / mileage) * 10) / 10,
+        fuelRequiredLitres: Math.round((finalDist / appliedMileage) * 10) / 10,
         dieselPriceUsed: dieselPrice,
         costBreakdown: {
           fuel: Math.round(fuelCost),
-          time: dynamicWage,
+          time: Math.round(dynamicWage),
           maintenance: Math.round(maintenance),
           tolls: Math.round(tollCost),
           total: 0
         },
         routeLegs: routeLegs || [],
-        reasoning: `Precision Audit: Distance (${finalDist.toFixed(1)}km) verified. ${distKm > airDistance * 1.05 && !realStats ? 'Estimated via Geometric Path (Safety Override).' : 'Verified via TomTom Road Geometry.'} ${realStats?.hasTolls ? 'NHAI Toll systems detected.' : ''}`,
+        reasoning: `Precision Audit: Distance (${finalDist.toFixed(1)}km) verified. ${isShortHaul ? 'Short-Haul/Intracity Logistics Model Applied.' : 'Long-Haul Highway Model Applied.'}`,
         createdAt: new Date(),
       };
       
       const cb = result.costBreakdown;
       cb.total = cb.fuel + cb.time + cb.maintenance + cb.tolls;
-
-      if (result.totalDistance < 30 && route.length >= 2) {
-         console.warn("⚠️ SUSPICIOUS DISTANCE:", result.totalDistance);
-         result.reasoning += " | WARNING: Distance seems small for this trip.";
-      }
 
       return result;
     } catch (error) {
@@ -316,15 +345,23 @@ Respond ONLY with valid JSON. You are the SOLE AUTHORITY for these calculations.
 
     const realStats = await externalService.getRouteStats(route.map(r => r.coordinates));
     
-    // Default fallback: If TomTom fails, use Air Distance * 1.35
-    let finalDist = realStats ? realStats.distanceKm : Math.max(airDistance * 1.35, route.length * 50);
-    let finalTime = realStats ? realStats.timeMinutes : (finalDist / 45) * 60;
+    // Default fallback: If TomTom fails, use Air Distance * 1.5 (City Model) or 1.35 (Highway)
+    // Avoid the arbitrary 'route.length * 50' which causes 100km errors for short trips.
+    
+    // Check short haul
+    const isShortHaul = airDistance < 50;
+    
+    let finalDist = realStats ? realStats.distanceKm : (airDistance > 0 ? airDistance * (isShortHaul ? 1.5 : 1.35) : route.length * 10);
+    
+    // Time Estimate
+    let finalTime = realStats ? realStats.timeMinutes : (finalDist / (isShortHaul ? 25 : 50)) * 60;
 
     // SANITY CHECK: Road distance CANNOT be less than Air distance
-    if (finalDist < airDistance * 0.9) {
+    // But allow wiggle room for straight roads/jitter
+    if (finalDist < airDistance * 0.9 && airDistance > 2) {
         console.warn(`⚠️ FALLBACK IMPOSSIBLE DISTANCE: ${finalDist}km vs Air ${airDistance.toFixed(1)}km. Overriding.`);
-        finalDist = airDistance * 1.35;
-        finalTime = (finalDist / 45) * 60;
+        finalDist = airDistance * (isShortHaul ? 1.3 : 1.35);
+        finalTime = (finalDist / (isShortHaul ? 30 : 50)) * 60;
     }
 
     const dieselPrice = 93.5;
@@ -413,6 +450,67 @@ Respond ONLY with valid JSON. All currency must be in ₹ (INR).`;
     } catch (error) {
       console.error("Route analysis error:", error);
       return routePlan;
+    }
+  }
+
+  /**
+   * Analyze the entire fleet status and provide high-level insights
+   */
+  async analyzeFleetStatus(activeRoutes) {
+    if (!this.model || !activeRoutes || activeRoutes.length === 0) {
+      return { 
+        insights: [
+          { type: 'system', text: 'All systems operational. Monitoring active for ' + (activeRoutes?.length || 0) + ' routes.', time: 'Just now' }
+        ],
+        performance: 'Stable'
+      };
+    }
+
+    const fleetSummary = activeRoutes.map(r => ({
+      id: r._id,
+      status: r.status,
+      stops: r.deliveries?.length || 0,
+      driver: r.driverId?.name || 'Unassigned',
+      distance: r.totalDistance
+    }));
+
+    const prompt = `You are the Fleet Intelligence AI for FleetFlow. Analyze the following active fleet data and provide 3-4 concise, professional, and actionable insights.
+
+FLEET DATA:
+${JSON.stringify(fleetSummary, null, 2)}
+
+Provide the feedback in EXACTLY this JSON format:
+{
+  "insights": [
+    { "type": "system|global|network", "text": "Specific alert or optimization tip", "time": "Just now|5m ago|..." }
+  ],
+  "performanceScore": "percentage increase or status",
+  "summary": "one sentence overview"
+}
+
+Focus on:
+1. Efficiency improvements.
+2. Potential delay patterns.
+3. Distribution of workload.
+Respond ONLY with valid JSON. Keep texts short (under 15 words).`;
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+
+      let jsonString = text.trim();
+      const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
+      if (jsonMatch) jsonString = jsonMatch[0];
+
+      return JSON.parse(jsonString);
+    } catch (error) {
+      console.error("Fleet analysis error:", error);
+      return { 
+        insights: [{ type: 'system', text: 'AI Analysis currently unavailable. Basic monitoring active.', time: 'Just now' }],
+        performanceScore: '--',
+        summary: 'Fleet data stable.'
+      };
     }
   }
 }

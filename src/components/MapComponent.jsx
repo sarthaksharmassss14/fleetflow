@@ -36,10 +36,67 @@ const MapResizer = ({ markers }) => {
   return null;
 };
 
-const MapComponent = ({ route, showTraffic = true, showWeather = true }) => {
+const LiveVehicleMarker = ({ path, onUpdate, startTime, durationMinutes }) => {
+  const [position, setPosition] = useState(path[0]);
+  
+  // Custom Truck Icon
+  const truckIcon = useMemo(() => L.divIcon({
+    className: 'vehicle-marker',
+    html: '<div style="font-size: 24px;">🚛</div>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
+  }), []);
+
+  useEffect(() => {
+    if (!path || path.length < 2) return;
+    
+    // Timer to update position based on Real Time Sync
+    const updatePosition = () => {
+      const start = startTime ? new Date(startTime).getTime() : Date.now();
+      const now = Date.now();
+      const elapsedSec = (now - start) / 1000;
+      const totalSec = (durationMinutes || 60) * 60;
+      
+      let progress = elapsedSec / totalSec;
+      
+      // If duration is 0 or invalid, default to 0
+      if (!totalSec) progress = 0;
+      
+      if (progress >= 1) {
+          progress = 1;
+      }
+      
+      const idx = Math.floor(progress * (path.length - 1));
+      
+      if (path[idx]) {
+        setPosition(path[idx]);
+      }
+      
+      if (onUpdate) onUpdate(progress);
+    };
+
+    const interval = setInterval(updatePosition, 1000);
+    updatePosition(); // Initial call
+
+    return () => clearInterval(interval);
+  }, [path, startTime, durationMinutes]);
+
+
+
+  if (!position) return null;
+
+  return <Marker position={position} icon={truckIcon} zIndexOffset={1000} />;
+};
+
+const MapComponent = ({ route, isDriver, hasDriver, onComplete }) => {
   const [markers, setMarkers] = useState([]);
   const [routePath, setRoutePath] = useState([]);
   const [resolving, setResolving] = useState(false);
+  const [vehicleProgress, setVehicleProgress] = useState(0);
+
+  // Live Vehicle Marker Logic
+  // Only show if route has a driver assigned
+  const showVehicle = hasDriver && routePath.length > 0;
 
   const TOMTOM_KEY = import.meta.env.VITE_TOMTOM_API_KEY || '';
   const OWM_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY || '';
@@ -124,6 +181,13 @@ const MapComponent = ({ route, showTraffic = true, showWeather = true }) => {
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
       {resolving && <div className="map-loader">Syncing Route Data...</div>}
       
+      {/* Live Stats HUD */}
+      {!resolving && routePath.length > 0 && !showVehicle && (
+         <div id="live-stats-hud" className="live-stats-overlay">
+           <div style={{fontSize: '0.9rem', fontWeight: 600}}>Initializing Tracker...</div>
+         </div>
+      )}
+
       <MapContainer 
         center={[20.5937, 78.9629]} 
         zoom={5} 
@@ -140,7 +204,7 @@ const MapComponent = ({ route, showTraffic = true, showWeather = true }) => {
             <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />
           </BaseLayer>
 
-          <Overlay checked={showTraffic} name="Live Traffic Flow">
+          <Overlay name="Live Traffic Flow">
             <TileLayer 
               url={`https://{s}.api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${TOMTOM_KEY}`}
               subdomains={['a', 'b', 'c', 'd']}
@@ -148,7 +212,7 @@ const MapComponent = ({ route, showTraffic = true, showWeather = true }) => {
             />
           </Overlay>
 
-          <Overlay checked={showWeather} name="Weather Precipitation">
+          <Overlay name="Weather Precipitation">
             <TileLayer 
               url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`}
               opacity={0.5}
@@ -159,7 +223,20 @@ const MapComponent = ({ route, showTraffic = true, showWeather = true }) => {
         {markers.map((m, idx) => {
           const stopColor = getPriorityColor(m.stop.priority);
           return (
-            <Marker key={idx} position={[m.lat, m.lng]} icon={createServiceIcon(m.index, stopColor)}>
+            <Marker 
+              key={idx} 
+              position={[m.lat, m.lng]} 
+              icon={createServiceIcon(m.index, stopColor)}
+              draggable={true}
+              eventHandlers={{
+                dragend: (e) => {
+                  const newPos = e.target.getLatLng();
+                  console.log(`Stop ${m.index} dragged to:`, newPos);
+                  // In a full implementation, this would trigger an API call to update the stop address/coordinates
+                  alert(`Stop ${m.index} moved to new location! (Update API would fire here)`);
+                }
+              }}
+            >
               <Popup>
                 <strong>Stop {m.index}</strong><br/>
                 {m.stop.address}<br/>
@@ -173,7 +250,77 @@ const MapComponent = ({ route, showTraffic = true, showWeather = true }) => {
           <Polyline positions={routePath} color="#0066ff" weight={6} opacity={0.6} />
         )}
 
+
+        {/* Simulated Live Vehicle Marker */}
+        {showVehicle && (
+          <LiveVehicleMarker 
+            path={routePath} 
+            startTime={route.updatedAt}
+            durationMinutes={route.estimatedTime}
+            onUpdate={(progress) => {
+               setVehicleProgress(progress);
+               // Update parent state for HUD
+               if (route && route.totalDistance) {
+                  const distRem = route.totalDistance * (1 - progress);
+                  const timeRem = (route.estimatedTime || 0) * (1 - progress);
+                  const hrs = Math.floor(timeRem / 60);
+                  const mins = Math.floor(timeRem % 60);
+                  const timeStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+               }
+            }} 
+          />
+        )}
+
         <MapResizer markers={markers} />
+
+        {/* Live Stats HUD - React Component */}
+        {showVehicle && vehicleProgress > 0 && (
+            <div 
+              className="live-stats-overlay"
+              style={{ pointerEvents: 'auto' }}
+              onMouseDown={(e) => { e.stopPropagation(); }}
+              onClick={(e) => { e.stopPropagation(); }}
+              onDoubleClick={(e) => { e.stopPropagation(); }}
+            >
+              {(() => {
+                 const distRem = route.totalDistance * (1 - vehicleProgress);
+                 const timeRem = (route.estimatedTime || 0) * (1 - vehicleProgress);
+                 const hrs = Math.floor(timeRem / 60);
+                 const mins = Math.ceil(timeRem % 60);
+                 const timeStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                 
+                 if (vehicleProgress >= 0.99) {
+                    return (
+                        <>
+                           <div style={{fontSize: '0.85rem', color: '#16a34a', marginBottom: '4px', fontWeight:700}}>✅ Arrived at Destination</div>
+                           {isDriver && (
+                               <button 
+                                 onMouseDown={(e) => e.stopPropagation()}
+                                 onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    if (onComplete) onComplete();
+                                 }} 
+                                 className="btn-complete-trip"
+                               >
+                                 End Trip
+                               </button>
+                           )}
+                        </>
+                    );
+                 } else {
+                    return (
+                        <>
+                            <div style={{fontSize: '0.85rem', color: 'var(--text-light)', marginBottom: '2px'}}>🚚 Live Tracking</div>
+                            <div style={{fontWeight: 800, color: 'var(--text-dark)', fontSize: '1.2rem'}}>{distRem.toFixed(1)} km left</div>
+                            <div style={{fontSize: '0.95rem', color: '#10b981', fontWeight: 700}}>⏱️ {timeStr} remaining</div>
+                        </>
+                    );
+                 }
+              })()}
+            </div>
+        )}
+
       </MapContainer>
 
       <style>{`
@@ -183,9 +330,49 @@ const MapComponent = ({ route, showTraffic = true, showWeather = true }) => {
             display: flex; align-items: center; justify-content: center;
             font-weight: bold; color: #0066ff;
         }
+        [data-theme='dark'] .map-loader {
+            background: rgba(0,0,0,0.7);
+        }
         .custom-map-marker { position: relative; }
         .marker-pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; position: absolute; transform: rotate(-45deg); left: 50%; top: 50%; margin: -15px 0 0 -15px; }
         .marker-label { position: absolute; width: 100%; text-align: center; top: 50%; left: 50%; transform: translate(-50%, -100%); color: white; font-weight: 800; font-size: 12px; z-index: 10; }
+        .live-stats-overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-white);
+            color: var(--text-dark);
+            padding: 12px 24px;
+            border-radius: 40px;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border-color);
+            z-index: 999;
+            pointer-events: none;
+            text-align: center;
+            backdrop-filter: blur(8px);
+            min-width: 220px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .btn-complete-trip {
+            background: #16a34a; 
+            color: white; 
+            border: none; 
+            padding: 8px 16px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            marginTop: 6px; 
+            fontWeight: 700;
+            fontSize: 0.9rem;
+            pointerEvents: auto;
+            transition: all 0.2s;
+        }
+        .btn-complete-trip:hover {
+            background: #15803d;
+            transform: translateY(-1px);
+        }
       `}</style>
     </div>
   );

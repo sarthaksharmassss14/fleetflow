@@ -17,6 +17,13 @@ const Header = () => {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
   const handleLogout = () => {
     logout()
     navigate('/')
@@ -39,6 +46,13 @@ const Header = () => {
           </ul>
 
           <div className="nav-actions">
+            <button 
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
+              className="theme-toggle-landing"
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
             {isAuthenticated ? (
               <>
                 <Link to="/dashboard" className="btn-secondary">

@@ -67,6 +67,35 @@
   align-items: center;
 }
 
+.theme-toggle-landing {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-toggle-landing:hover {
+  background: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+[data-theme='dark'] .theme-toggle-landing {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .theme-toggle-landing:hover {
+  background: #334155;
+}
+
 .mobile-menu-toggle {
   display: none;
   flex-direction: column;

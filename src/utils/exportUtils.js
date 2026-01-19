@@ -38,18 +38,28 @@ export const exportToPDF = (route) => {
     doc.setTextColor(0, 102, 255); // Blue for Total
     doc.text(`Total Running Cost: INR ${route.costBreakdown?.total?.toFixed(2) || '0.00'}`, 14, 66);
 
+    // Source & Destination
+    const stops = Array.isArray(route.route) ? route.route : [];
+    if (stops.length > 0) {
+        doc.text(`Source: ${stops[0].address}`, 14, 72);
+        doc.text(`Destination: ${stops[stops.length-1].address}`, 14, 78);
+    }
+
     // Table Columns
-    const tableColumn = ["Seq", "Address", "Priority", "Time Window", "Expected Arrival"];
+    const tableColumn = ["Seq", "Type", "Address", "Priority", "Time Window", "Expected Arrival"];
     const tableRows = [];
 
-    // Table Rows
-    const stops = Array.isArray(route.route) ? route.route : [];
     stops.forEach((stop, index) => {
       const arrivalDate = route.createdAt ? new Date(route.createdAt) : new Date();
       const arrivalTime = new Date(arrivalDate.getTime() + index * 30 * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       
+      let type = "Stop";
+      if (index === 0) type = "Source";
+      else if (index === stops.length - 1) type = "Destination";
+
       const stopData = [
         index + 1,
+        type,
         stop.address || "Unknown Address",
         stop.priority || "normal",
         stop.timeWindow || "Anytime",
@@ -60,11 +70,11 @@ export const exportToPDF = (route) => {
 
     if (doc.autoTable) {
       doc.autoTable({
-        startY: 74,
+        startY: 85, // Shifted down for Source/Dest texts
         head: [tableColumn],
         body: tableRows,
         theme: 'grid',
-        headStyles: { fillColor: [75, 192, 192] }, // FleetFlow teal color
+        headStyles: { fillColor: [75, 192, 192] },
       });
     }
 
@@ -92,13 +102,19 @@ export const exportToPDF = (route) => {
 export const exportToCSV = (route) => {
   try {
     const routeId = route?._id ? route._id.toString().slice(-6).toUpperCase() : "UNKNOWN";
-    const headers = ["Sequence,Address,Priority,Time Window,Expected Arrival"];
+    // Added 'Type' column
+    const headers = ["Sequence,Type,Address,Priority,Time Window,Expected Arrival"];
     
     const stops = Array.isArray(route?.route) ? route.route : [];
     const rows = stops.map((stop, index) => {
       const arrivalDate = route.createdAt ? new Date(route.createdAt) : new Date();
       const arrivalTime = new Date(arrivalDate.getTime() + index * 30 * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      return `${index + 1},"${stop.address || 'Unknown'}",${stop.priority || 'normal'},${stop.timeWindow || "Anytime"},${arrivalTime}`;
+      
+      let type = "Stop";
+      if (index === 0) type = "Source";
+      else if (index === stops.length - 1) type = "Destination";
+
+      return `${index + 1},${type},"${stop.address || 'Unknown'}",${stop.priority || 'normal'},${stop.timeWindow || "Anytime"},${arrivalTime}`;
     });
 
     const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
@@ -111,5 +127,55 @@ export const exportToCSV = (route) => {
     document.body.removeChild(link);
   } catch (err) {
     console.error("CSV Export Error:", err);
+  }
+};
+
+/**
+ * Export route details to iCal (.ics)
+ * @param {Object} route - The route object
+ */
+export const exportToiCal = (route) => {
+  try {
+    const routeId = route?._id ? route._id.toString().slice(-6).toUpperCase() : "UNKNOWN";
+    let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//FleetFlow//Route Schedule//EN\n";
+
+    const stops = Array.isArray(route?.route) ? route.route : [];
+    const baseDate = route.createdAt ? new Date(route.createdAt) : new Date();
+
+    stops.forEach((stop, index) => {
+      // Estimate each stop is 30 mins apart for scheduling purpose
+      const arrival = new Date(baseDate.getTime() + index * 30 * 60000);
+      const departure = new Date(arrival.getTime() + 15 * 60000); // 15 min duration
+
+      const formatDate = (date) => {
+        return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      };
+
+      let summaryPrefix = "Delivery";
+      if (index === 0) summaryPrefix = "START (Source)";
+      else if (index === stops.length - 1) summaryPrefix = "END (Destination)";
+
+      icsContent += "BEGIN:VEVENT\n";
+      icsContent += `UID:${routeId}-${index}@fleetflow.app\n`;
+      icsContent += `DTSTAMP:${formatDate(new Date())}\n`;
+      icsContent += `DTSTART:${formatDate(arrival)}\n`;
+      icsContent += `DTEND:${formatDate(departure)}\n`;
+      icsContent += `SUMMARY:${summaryPrefix}: ${stop.address}\n`;
+      icsContent += `DESCRIPTION:${summaryPrefix}. Priority: ${stop.priority}.\n`;
+      icsContent += `LOCATION:${stop.address}\n`;
+      icsContent += "END:VEVENT\n";
+    });
+
+    icsContent += "END:VCALENDAR";
+
+    const link = document.createElement("a");
+    link.href = "data:text/calendar;charset=utf-8," + encodeURIComponent(icsContent);
+    link.download = `fleetflow_route_${routeId}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (err) {
+    console.error("iCal Export Error:", err);
+    alert("Failed to export iCalendar file.");
   }
 };

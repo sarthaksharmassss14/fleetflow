@@ -78,6 +78,10 @@ const routePlanSchema = new mongoose.Schema(
       enum: ["draft", "active", "completed", "cancelled"],
       default: "draft",
     },
+    isArchived: {
+      type: Boolean,
+      default: false,
+    },
     reasoning: String,
     vehicleData: {
       type: {

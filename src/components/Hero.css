@@ -1,6 +1,6 @@
 .hero {
   padding: 140px 0 80px;
-  background: linear-gradient(135deg, #F8F9FA 0%, #FFFFFF 100%);
+  background: linear-gradient(135deg, var(--bg-light) 0%, var(--bg-white) 100%);
   margin-top: 70px;
 }
 
@@ -123,6 +123,14 @@
   border-radius: 8px;
   margin-bottom: 1.5rem;
   overflow: hidden;
+}
+
+[data-theme='dark'] .map-preview {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+[data-theme='dark'] .route-point {
+  border-color: var(--bg-white);
 }
 
 .route-line {

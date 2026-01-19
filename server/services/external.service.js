@@ -1,23 +1,90 @@
 import axios from 'axios';
 
 class ExternalService {
-  async getWeatherData(city) {
-    const key = process.env.OPENWEATHER_API_KEY;
+  constructor() {
+    this.weatherCache = new Map();
+    this.CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  }
+
+  async getWeatherData(city, lat, lon) {
+    const cacheKey = lat && lon ? `${lat},${lon}` : city?.toLowerCase().trim();
+    const cached = this.weatherCache.get(cacheKey);
+
+    if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
+      console.log(`[Weather] Using cached data for: ${cacheKey}`);
+      return cached.data;
+    }
+
+    const key = process.env.WEATHER_API_KEY;
     if (!key) {
-      console.warn("Missing OPENWEATHER_API_KEY");
-      return { condition: 'unknown', temperature: 20 };
+      console.warn("[Weather] Missing WEATHER_API_KEY in .env");
+      return { 
+        condition: 'Cloudy', 
+        temperature: 18, 
+        humidity: 65, 
+        windSpeed: 5, 
+        visibility: 10000, 
+        pressure: 1012, 
+        description: 'API key missing (Fallback)' 
+      };
     }
     try {
-      const response = await axios.get(`https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${key}&units=metric`);
-      return {
-        condition: response.data.weather[0].main,
-        temperature: response.data.main.temp,
-        humidity: response.data.main.humidity,
-        description: response.data.weather[0].description
+      let query = city;
+      
+      // If no coordinates, try to get them via TomTom geocode first for better precision
+      let activeLat = lat;
+      let activeLon = lon;
+      
+      if (!activeLat || !activeLon) {
+        const geo = await this.geocode(city);
+        if (geo) {
+          activeLat = geo.lat;
+          activeLon = geo.lng;
+        }
+      }
+
+      if (activeLat && activeLon) {
+        query = `${activeLat},${activeLon}`;
+      } else {
+        // Fallback to string search if geocoding also fails
+        query = city.toLowerCase().includes('india') ? city : `${city}, India`;
+      }
+
+      const url = `http://api.weatherapi.com/v1/current.json?key=${key}&q=${encodeURIComponent(query)}&aqi=no`;
+      
+      const response = await axios.get(url);
+      const current = response.data.current;
+      const location = response.data.location;
+      
+      const data = {
+        condition: current.condition.text,
+        temperature: current.temp_c,
+        humidity: current.humidity,
+        description: current.condition.text,
+        windSpeed: current.wind_kph,
+        visibility: current.vis_km * 1000, 
+        pressure: current.pressure_mb,
+        resolvedLocation: `${location.name}, ${location.region}, ${location.country}`
       };
+
+      // Save to cache
+      this.weatherCache.set(cacheKey, { data, timestamp: Date.now() });
+      return data;
     } catch (error) {
-      console.error("Weather API error:", error.message);
-      return { condition: 'cloudy', temperature: 18 }; // Fallback
+      if (error.response?.status === 429) {
+        console.warn(`[Weather] Rate limit hit for ${cacheKey}. Return last cached or fallback.`);
+        if (cached) return cached.data;
+      }
+      console.error(`Weather API error [${city || (lat + ',' + lon)}]:`, error.message);
+      return { 
+        condition: 'Cloudy', 
+        temperature: 18, 
+        humidity: 65, 
+        windSpeed: 5, 
+        visibility: 10000, 
+        pressure: 1012, 
+        description: 'Conditions data unavailable (Fallback)' 
+      };
     }
   }
 
@@ -79,7 +146,7 @@ class ExternalService {
     }
   }
 
-  async getRouteStats(points) {
+  async getRouteStats(points, vehicleType = 'van') {
     const key = process.env.TOMTOM_API_KEY;
     if (!key || points.length < 2) {
       console.warn("Skipping TomTom Routing (Missing key or insufficient points)");
@@ -88,19 +155,28 @@ class ExternalService {
     
     try {
       const locations = points.map(p => `${p.lat},${p.lng}`).join(':');
-      console.log(`[TomTom] Calculating Route: ${locations}`);
+      console.log(`[TomTom] Debug - Input Type: '${vehicleType}'`);
+      console.log(`[TomTom] Calculating Route: ${locations} [Type: ${vehicleType}]`);
       
-      // Try with truck parameters first for better precision
-      const truckUrl = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&vehicleType=truck&vehicleWeight=12000&routeType=fastest&report=tollSummary`;
+      // Map user vehicle type to TomTom type
+      // 'van' -> 'car' (allows expressways, generally faster, Google Maps-like)
+      // 'truck' -> 'truck' (avoids restricted roads, might be longer)
+      const tomtomType = vehicleType === 'truck' ? 'truck' : 'car';
       
+      let url = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&travelMode=${tomtomType}&routeType=fastest&report=tollSummary`;
+      
+      if (tomtomType === 'truck') {
+         url += '&vehicleWeight=12000'; // 12 Tonnes
+      }
+
       let resp;
       try {
-        resp = await axios.get(truckUrl, { timeout: 5000 });
+        resp = await axios.get(url, { timeout: 8000 });
       } catch (err) {
-        console.warn(`[TomTom] Truck routing failed, falling back to standard vehicle: ${err.message}`);
-        // FALLBACK: Simple fastest route if truck routing fails
-        const fallbackUrl = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&routeType=fastest&report=tollSummary`;
-        resp = await axios.get(fallbackUrl, { timeout: 5000 });
+        console.warn(`[TomTom] Primary routing failed for ${vehicleType}, attempting fallback to standard car routing: ${err.message}`);
+        // FALLBACK: Simple car routing if specific one fails
+        const fallbackUrl = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&vehicleType=car&routeType=fastest&report=tollSummary`;
+        resp = await axios.get(fallbackUrl, { timeout: 8000 });
       }
 
       const route = resp.data.routes[0].summary;
