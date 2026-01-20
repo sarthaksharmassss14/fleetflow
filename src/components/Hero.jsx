@@ -1,7 +1,20 @@
 import React from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import './Hero.css'
 
 const Hero = () => {
+  const { isAuthenticated } = useAuth()
+  const navigate = useNavigate()
+
+  const handleStartTrial = () => {
+    if (isAuthenticated) {
+      navigate('/dashboard')
+    } else {
+      navigate('/signup')
+    }
+  }
+
   return (
     <section className="hero">
       <div className="container">
@@ -17,8 +30,15 @@ const Hero = () => {
               cost analyses, and live updates.
             </p>
             <div className="hero-cta">
-              <button className="btn-primary btn-large">Start Free Trial</button>
-              <button className="btn-outline btn-large">Watch Demo</button>
+              <button onClick={handleStartTrial} className="btn-primary btn-large">Start Free Trial</button>
+              <a 
+                href="https://www.youtube.com/results?search_query=fleet+management+demo" // Placeholder Demo Link
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="btn-outline btn-large"
+              >
+                Watch Demo
+              </a>
             </div>
             <div className="hero-stats">
               <div className="stat">

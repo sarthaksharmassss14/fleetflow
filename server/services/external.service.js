@@ -1,18 +1,19 @@
 import axios from 'axios';
+import NodeCache from 'node-cache';
 
 class ExternalService {
   constructor() {
-    this.weatherCache = new Map();
-    this.CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+    // Standard TTL 10 minutes, check for expired keys every 2 minutes
+    this.cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
   }
 
   async getWeatherData(city, lat, lon) {
-    const cacheKey = lat && lon ? `${lat},${lon}` : city?.toLowerCase().trim();
-    const cached = this.weatherCache.get(cacheKey);
+    const cacheKey = `weather:${lat && lon ? `${lat},${lon}` : city?.toLowerCase().trim()}`;
+    const cached = this.cache.get(cacheKey);
 
-    if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
-      console.log(`[Weather] Using cached data for: ${cacheKey}`);
-      return cached.data;
+    if (cached) {
+      console.log(`[Cache] Hit for ${cacheKey}`);
+      return cached;
     }
 
     const key = process.env.WEATHER_API_KEY;
@@ -68,12 +69,12 @@ class ExternalService {
       };
 
       // Save to cache
-      this.weatherCache.set(cacheKey, { data, timestamp: Date.now() });
+      this.cache.set(cacheKey, data);
       return data;
     } catch (error) {
       if (error.response?.status === 429) {
         console.warn(`[Weather] Rate limit hit for ${cacheKey}. Return last cached or fallback.`);
-        if (cached) return cached.data;
+        if (cached) return cached;
       }
       console.error(`Weather API error [${city || (lat + ',' + lon)}]:`, error.message);
       return { 
@@ -89,12 +90,20 @@ class ExternalService {
   }
 
   async getTrafficData(lat, lon) {
+    const cacheKey = `traffic:${lat},${lon}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      console.log(`[Cache] Hit for ${cacheKey}`);
+      return cached;
+    }
+
     const key = process.env.TOMTOM_API_KEY;
     if (!key) {
       console.warn("Missing TOMTOM_API_KEY");
       return { congestionLevel: 'unknown', incidents: [] };
     }
     try {
+      // Traffic flows change faster, so maybe shorter TTL? stick to 10 mins for now to save credits
       const response = await axios.get(`https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key=${key}&point=${lat},${lon}`);
       
       const flowData = response.data.flowSegmentData;
@@ -104,12 +113,15 @@ class ExternalService {
       if (speedRatio < 0.4) congestion = 'high';
       else if (speedRatio < 0.7) congestion = 'moderate';
 
-      return {
+      const data = {
         congestionLevel: congestion,
         currentSpeed: flowData.currentSpeed,
         freeFlowSpeed: flowData.freeFlowSpeed,
         confidence: flowData.confidence
       };
+
+      this.cache.set(cacheKey, data, 300); // 5 minutes TTL for traffic
+      return data;
     } catch (error) {
       console.error("Traffic API error:", error.message);
       return { congestionLevel: 'moderate', incidents: [] }; // Fallback
@@ -117,6 +129,11 @@ class ExternalService {
   }
 
   async geocode(address) {
+    if (!address) return null;
+    const cacheKey = `geo:${address.toLowerCase().trim()}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
+
     const key = process.env.TOMTOM_API_KEY;
     if (!key) {
       console.warn("[TomTom] Missing API Key for Geocoding");
@@ -132,13 +149,13 @@ class ExternalService {
       
       if (resp.data && resp.data.results && resp.data.results.length > 0) {
         const pos = resp.data.results[0].position;
-        console.log(`[TomTom] Geocode Success: ${address} -> ${pos.lat},${pos.lon}`);
-        return {
+        const result = {
           lat: pos.lat,
           lng: pos.lon
         };
+        this.cache.set(cacheKey, result, 86400); // Cache geocodes for 24 hours
+        return result;
       }
-      console.warn(`[TomTom] Geocode returned no results for: ${query}`);
       return null;
     } catch (err) {
       console.error(`[TomTom] Geocoding fail: ${address}`, err.message);
@@ -146,21 +163,62 @@ class ExternalService {
     }
   }
 
+  async searchAddress(query) {
+    // Don't cache search auto-complete aggresively, or maybe short TTL
+    const key = process.env.TOMTOM_API_KEY;
+    if (!key || !query || query.length < 3) return []; 
+
+    try {
+      const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json?key=${key}&limit=5&countrySet=IN`;
+      const resp = await axios.get(url, { timeout: 3000 });
+
+      if (resp.data && resp.data.results) {
+        return resp.data.results.map(r => ({
+          label: r.address.freeformAddress,
+          value: r.address.freeformAddress,
+          position: r.position
+        }));
+      }
+      return [];
+    } catch (err) {
+      console.error(`[TomTom] Search failed: ${query}`, err.message);
+      return [];
+    }
+  }
+
+  async reverseGeocode(lat, lon) {
+    const cacheKey = `revgeo:${lat},${lon}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
+
+    const key = process.env.TOMTOM_API_KEY;
+    if (!key) return null;
+    try {
+      const url = `https://api.tomtom.com/search/2/reverseGeocode/${lat},${lon}.json?key=${key}`;
+      const resp = await axios.get(url, { timeout: 4000 });
+      if (resp.data && resp.data.addresses && resp.data.addresses.length > 0) {
+        const result = resp.data.addresses[0].address.freeformAddress;
+        this.cache.set(cacheKey, result, 86400); // 24 hours
+        return result;
+      }
+      return null;
+    } catch (err) {
+      console.error("[TomTom] Reverse Geocode error:", err.message);
+      return null;
+    }
+  }
+
   async getRouteStats(points, vehicleType = 'van') {
+    // Cache route stats? Maybe. Complex key though.
     const key = process.env.TOMTOM_API_KEY;
     if (!key || points.length < 2) {
-      console.warn("Skipping TomTom Routing (Missing key or insufficient points)");
       return null;
     }
     
     try {
       const locations = points.map(p => `${p.lat},${p.lng}`).join(':');
-      console.log(`[TomTom] Debug - Input Type: '${vehicleType}'`);
-      console.log(`[TomTom] Calculating Route: ${locations} [Type: ${vehicleType}]`);
       
-      // Map user vehicle type to TomTom type
-      // 'van' -> 'car' (allows expressways, generally faster, Google Maps-like)
-      // 'truck' -> 'truck' (avoids restricted roads, might be longer)
+      // Determine TomTom specific vehicle parameter
       const tomtomType = vehicleType === 'truck' ? 'truck' : 'car';
       
       let url = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&travelMode=${tomtomType}&routeType=fastest&report=tollSummary`;
@@ -173,21 +231,18 @@ class ExternalService {
       try {
         resp = await axios.get(url, { timeout: 8000 });
       } catch (err) {
-        console.warn(`[TomTom] Primary routing failed for ${vehicleType}, attempting fallback to standard car routing: ${err.message}`);
-        // FALLBACK: Simple car routing if specific one fails
+        console.warn(`[TomTom] Primary routing failed for ${vehicleType}, attempting fallback to car.`);
         const fallbackUrl = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&vehicleType=car&routeType=fastest&report=tollSummary`;
         resp = await axios.get(fallbackUrl, { timeout: 8000 });
       }
 
       const route = resp.data.routes[0].summary;
-      // Extract toll summary
       const tollSummary = resp.data.routes[0].sections?.filter(s => s.type === 'tollRoad') || [];
       
-      console.log(`[TomTom] Success: ${route.lengthInMeters / 1000}km in ${route.travelTimeInSeconds / 60}min`);
-
       return {
         distanceKm: route.lengthInMeters / 1000,
         timeMinutes: route.travelTimeInSeconds / 60,
+        trafficDelayMins: (route.trafficDelayInSeconds || 0) / 60,
         hasTolls: tollSummary.length > 0
       };
     } catch (err) {

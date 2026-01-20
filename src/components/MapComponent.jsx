@@ -70,9 +70,8 @@ const LiveVehicleMarker = ({ path, onUpdate, startTime, durationMinutes }) => {
       
       if (path[idx]) {
         setPosition(path[idx]);
+        if (onUpdate) onUpdate(progress, path[idx]);
       }
-      
-      if (onUpdate) onUpdate(progress);
     };
 
     const interval = setInterval(updatePosition, 1000);
@@ -88,7 +87,7 @@ const LiveVehicleMarker = ({ path, onUpdate, startTime, durationMinutes }) => {
   return <Marker position={position} icon={truckIcon} zIndexOffset={1000} />;
 };
 
-const MapComponent = ({ route, isDriver, hasDriver, onComplete }) => {
+const MapComponent = ({ route, isDriver, hasDriver, onComplete, onTruckMove }) => {
   const [markers, setMarkers] = useState([]);
   const [routePath, setRoutePath] = useState([]);
   const [resolving, setResolving] = useState(false);
@@ -212,12 +211,14 @@ const MapComponent = ({ route, isDriver, hasDriver, onComplete }) => {
             />
           </Overlay>
 
-          <Overlay name="Weather Precipitation">
-            <TileLayer 
-              url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`}
-              opacity={0.5}
-            />
-          </Overlay>
+          {OWM_KEY && (
+            <Overlay name="Weather Precipitation">
+              <TileLayer 
+                url={`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${OWM_KEY}`}
+                opacity={0.5}
+              />
+            </Overlay>
+          )}
         </LayersControl>
 
         {markers.map((m, idx) => {
@@ -227,15 +228,7 @@ const MapComponent = ({ route, isDriver, hasDriver, onComplete }) => {
               key={idx} 
               position={[m.lat, m.lng]} 
               icon={createServiceIcon(m.index, stopColor)}
-              draggable={true}
-              eventHandlers={{
-                dragend: (e) => {
-                  const newPos = e.target.getLatLng();
-                  console.log(`Stop ${m.index} dragged to:`, newPos);
-                  // In a full implementation, this would trigger an API call to update the stop address/coordinates
-                  alert(`Stop ${m.index} moved to new location! (Update API would fire here)`);
-                }
-              }}
+              draggable={false}
             >
               <Popup>
                 <strong>Stop {m.index}</strong><br/>
@@ -257,9 +250,11 @@ const MapComponent = ({ route, isDriver, hasDriver, onComplete }) => {
             path={routePath} 
             startTime={route.updatedAt}
             durationMinutes={route.estimatedTime}
-            onUpdate={(progress) => {
+            onUpdate={(progress, coords) => {
                setVehicleProgress(progress);
-               // Update parent state for HUD
+               if (onTruckMove && coords) onTruckMove(coords);
+               
+               // Existing HUD logic
                if (route && route.totalDistance) {
                   const distRem = route.totalDistance * (1 - progress);
                   const timeRem = (route.estimatedTime || 0) * (1 - progress);

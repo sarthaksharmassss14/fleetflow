@@ -6,10 +6,7 @@ const deliverySchema = new mongoose.Schema({
     lat: Number,
     lng: Number,
   },
-  timeWindow: {
-    start: String,
-    end: String,
-  },
+  timeWindow: { type: String, default: "anytime" },
   priority: {
     type: String,
     enum: ["low", "normal", "medium", "high", "urgent"],
@@ -65,6 +62,10 @@ const routePlanSchema = new mongoose.Schema(
       tolls: { type: Number, default: 0 },
       total: { type: Number, default: 0 },
     },
+    trafficAnalysis: {
+        delayMins: { type: Number, default: 0 },
+        avgSpeedKmh: { type: Number, default: 0 }
+    },
     routeLegs: [
       {
         from: String,
@@ -83,6 +84,7 @@ const routePlanSchema = new mongoose.Schema(
       default: false,
     },
     reasoning: String,
+    constraintsAlert: String,
     vehicleData: {
       type: {
         type: String,

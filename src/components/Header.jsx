@@ -39,10 +39,11 @@ const Header = () => {
           </Link>
           
           <ul className={`nav-links ${isMobileMenuOpen ? 'open' : ''}`}>
-            <li><a href="#features">Features</a></li>
-            <li><a href="#how-it-works">How It Works</a></li>
-            <li><a href="#benefits">Benefits</a></li>
-            <li><a href="#testimonials">Testimonials</a></li>
+            <li><Link to="/pricing">Pricing</Link></li>
+            <li><Link to="/about">About Us</Link></li>
+            <li><Link to="/contact">Contact Us</Link></li>
+            <li><Link to="/careers">Careers</Link></li>
+            <li><Link to="/blog">Blog</Link></li>
           </ul>
 
           <div className="nav-actions">

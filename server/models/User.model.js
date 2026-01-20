@@ -17,7 +17,12 @@ const userSchema = new mongoose.Schema(
     },
     passwordHash: {
       type: String,
-      required: true,
+      required: function() { return !this.googleId; }, // Only required if not OAuth
+    },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allows multiple nulls
     },
     role: {
       type: String,
@@ -31,6 +36,11 @@ const userSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    subscription: {
+      plan: { type: String, enum: ['free', 'pro', 'enterprise'], default: 'free' },
+      status: { type: String, enum: ['active', 'inactive', 'past_due'], default: 'active' },
+      validUntil: { type: Date },
     },
   },
   {

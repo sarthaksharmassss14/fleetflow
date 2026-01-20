@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/api.service';
+import socketService from '../services/socket.service';
 import MapComponent from '../components/MapComponent';
 import { exportToPDF, exportToCSV, exportToiCal } from '../utils/exportUtils';
 import ProfileModal from '../components/ProfileModal';
+import NotificationCenter from '../components/NotificationCenter';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -14,9 +16,20 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState(null);
+  // Refs for polling to avoid stale closures
+  const routesRef = React.useRef(routes);
+  const selectedRouteRef = React.useRef(selectedRoute);
+
+  React.useEffect(() => {
+    routesRef.current = routes;
+  }, [routes]);
+
+  React.useEffect(() => {
+    selectedRouteRef.current = selectedRoute;
+  }, [selectedRoute]);
   
   const [formData, setFormData] = useState({
-    deliveries: [{ address: '', priority: 'normal', timeWindow: '' }],
+    deliveries: [{ address: '', priority: 'normal', timeWindow: '9:00 AM' }],
     vehicleData: { capacity: 1000, type: 'van' },
   });
   const [creating, setCreating] = useState(false);
@@ -31,11 +44,57 @@ const Dashboard = () => {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [weather, setWeather] = useState(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
-  const [weatherTarget, setWeatherTarget] = useState('destination'); // 'source' or 'destination'
+  const [weatherTarget, setWeatherTarget] = useState('destination'); // 'source', 'destination', or 'truck'
+  const [truckCoords, setTruckCoords] = useState(null);
+  useEffect(() => {
+    if (truckCoords && weatherTarget === 'destination') {
+        setWeatherTarget('truck'); // Auto-follow truck logic
+    }
+  }, [truckCoords]);
+  const lastWeatherFetch = React.useRef(0);
   const [showRateModal, setShowRateModal] = useState(false);
   const [simRates, setSimRates] = useState({ wage: 15, fuel: 96 }); // Default rates
+  
+  // Autocomplete Suggestions State
+  const [suggestions, setSuggestions] = useState({}); // { 0: [{label, value}], 1: [...] }
+  const searchTimeoutRef = React.useRef(null);
+
+  const fetchAddressSuggestions = async (query, index) => {
+    if (!query || query.length < 3) {
+      setSuggestions(prev => ({ ...prev, [index]: [] }));
+      return;
+    }
+    
+    // Clear previous timeout
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    // Debounce
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const resp = await apiService.searchLocation(query);
+        if (resp.success) {
+           setSuggestions(prev => ({ ...prev, [index]: resp.data }));
+        }
+      } catch (err) {
+        console.error("Suggestion fetch error", err);
+      }
+    }, 400); 
+  };
+    
+  const selectSuggestion = (val, index, isEdit) => {
+      const stops = isEdit ? [...editData.deliveries] : [...formData.deliveries];
+      stops[index].address = val;
+      if (isEdit) setEditData({...editData, deliveries: stops});
+      else setFormData({...formData, deliveries: stops});
+      // Clear suggestions for this index
+      setSuggestions(prev => ({ ...prev, [index]: [] }));
+  };
   const [fleetAnalysis, setFleetAnalysis] = useState(null);
   const [fetchingAnalysis, setFetchingAnalysis] = useState(false);
+  
+  // Custom Modal States
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [routeToDelete, setRouteToDelete] = useState(null);
 
 
 
@@ -88,14 +147,14 @@ const Dashboard = () => {
 
 
   useEffect(() => {
-    // Notify driver if a new route is assigned
-    if (user?.role === 'driver' && routes.length > lastRouteCount && lastRouteCount !== 0) {
-      alert("🚀 New Route Assigned! Check your sidebar for details.");
-    }
+    // New route logic handled by real-time notifications
     setLastRouteCount(routes.length);
-  }, [routes, user?.role]);
+  }, [routes]);
 
   // Fetch Weather Effect
+  const lastTruckWeatherFetch = React.useRef(0);
+  const lastTarget = React.useRef(weatherTarget);
+
   useEffect(() => {
     const fetchSelectedWeather = async () => {
       if (!selectedRoute) {
@@ -103,28 +162,48 @@ const Dashboard = () => {
         return;
       }
 
-      // Use route array if available (ordered sequence), fallback to deliveries
-      const stops = (selectedRoute.route && selectedRoute.route.length > 0) 
-                    ? selectedRoute.route 
-                    : (selectedRoute.deliveries || []);
+      const isTargetPulse = lastTarget.current === weatherTarget;
+      lastTarget.current = weatherTarget;
 
-      if (stops.length === 0) {
-        setWeather(null);
-        return;
+      // Only show loading UI on manual tab switch, not on background coord updates
+      if (!isTargetPulse) {
+         setLoadingWeather(true);
       }
-      
-      setLoadingWeather(true);
-      try {
+
+      // Throttle background updates for the moving truck to every 15 minutes
+      if (weatherTarget === 'truck' && isTargetPulse) {
+        const now = Date.now();
+        if (now - lastTruckWeatherFetch.current < 900000) return; // 15 minute throttle
+      }
+
+      let lat, lon, address = '';
+
+      if (weatherTarget === 'truck') {
+        if (!truckCoords) return;
+        lat = truckCoords[0];
+        lon = truckCoords[1];
+        address = '';
+      } else {
+        const stops = (selectedRoute.route && selectedRoute.route.length > 0) 
+                      ? selectedRoute.route 
+                      : (selectedRoute.deliveries || []);
+
+        if (stops.length === 0) return;
+
         const addrIndex = weatherTarget === 'source' ? 0 : (stops.length - 1);
         const stop = stops[addrIndex];
-        
-        // Pass coordinates if available (much more accurate than address string)
-        const lat = stop?.coordinates?.lat;
-        const lon = stop?.coordinates?.lng;
-        
-        const resp = await apiService.getWeather(stop?.address || '', lat, lon);
+        lat = stop?.coordinates?.lat;
+        lon = stop?.coordinates?.lng;
+        address = stop?.address || '';
+      }
+      
+      try {
+        const resp = await apiService.getWeather(address, lat, lon);
         if (resp.success) {
           setWeather(resp.data);
+          if (weatherTarget === 'truck') {
+            lastTruckWeatherFetch.current = Date.now();
+          }
         }
       } catch (err) {
         console.error("Weather fetch failed:", err);
@@ -134,7 +213,7 @@ const Dashboard = () => {
     };
 
     fetchSelectedWeather();
-  }, [selectedRoute, weatherTarget]);
+  }, [selectedRoute, weatherTarget, truckCoords]);
 
 
   const fetchFleetAnalysis = async () => {
@@ -170,16 +249,31 @@ const Dashboard = () => {
       if (response && response.success) {
         const data = response.data || [];
         
-        // Sync List
-        if (JSON.stringify(data) !== JSON.stringify(routes)) {
+        // Sync List only if lengths differ or deep structure changed
+        const currentRoutes = routesRef.current;
+        if (data.length !== currentRoutes.length || JSON.stringify(data) !== JSON.stringify(currentRoutes)) {
+            console.log("Polling: syncing routes list");
             setRoutes(data);
-            
-            // Sync Selected Route (if active)
-            if (selectedRoute) {
-               const fresh = data.find(r => r._id === selectedRoute._id);
-               if (fresh && (fresh.status !== selectedRoute.status || fresh.driverId?._id !== selectedRoute.driverId?._id)) {
-                   setSelectedRoute(fresh);
-               }
+        }
+
+        // Sync Selected Route details (status changes, driver assignments, or re-optimizations)
+        const currentSelected = selectedRouteRef.current;
+        if (currentSelected) {
+            const fresh = data.find(r => r._id === currentSelected._id);
+            if (fresh) {
+                const statusChanged = fresh.status !== currentSelected.status;
+                const driverChanged = (fresh.driverId?._id || fresh.driverId) !== (currentSelected.driverId?._id || currentSelected.driverId);
+                
+                // CRITICAL: Detect if AI re-ordered the stops or updated the path
+                const routeChanged = fresh.route?.length !== currentSelected.route?.length || 
+                                     JSON.stringify(fresh.route) !== JSON.stringify(currentSelected.route);
+
+                if (statusChanged || driverChanged || routeChanged) {
+                    console.log(`Polling: updating selected route details [Status: ${statusChanged}, Driver: ${driverChanged}, Route: ${routeChanged}]`);
+                    setSelectedRoute(fresh);
+                }
+            } else {
+                setSelectedRoute(null);
             }
         }
       }
@@ -187,6 +281,29 @@ const Dashboard = () => {
       console.error('Silent poll failed:', error);
     }
   };
+
+  // --- REAL-TIME SOCKET INTEGRATION ---
+  useEffect(() => {
+    if (!user) return;
+
+    // Listen for re-optimization or status updates from other users/system
+    const unsubscribe = socketService.on('notification', (notif) => {
+      console.log("RT Update Received:", notif);
+      
+      if (notif.type === 'reoptimize' || notif.type === 'update' || notif.type === 'create') {
+        // Trigger a poll to get fresh data immediately
+        pollRoutes();
+        
+        // If the update is specifically for our selected route, we might want to show a toast
+        if (selectedRouteRef.current?._id === notif.routeId) {
+           console.log("Our current route was updated in real-time!");
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]); 
+
 
   const fetchRoutes = async () => {
     try {
@@ -254,14 +371,21 @@ const Dashboard = () => {
 
   const handleDeleteRoute = async (id, e) => {
     e.stopPropagation();
-    if (!window.confirm("Are you sure you want to delete this route?")) return;
+    setRouteToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!routeToDelete) return;
     
     try {
       setError('');
-      const resp = await apiService.deleteRoute(id);
+      setShowDeleteConfirm(false);
+      const resp = await apiService.deleteRoute(routeToDelete);
       if (resp.success) {
-        setRoutes(routes.filter(r => r._id !== id));
-        if (selectedRoute?._id === id) setSelectedRoute(null);
+        setRoutes(routes.filter(r => r._id !== routeToDelete));
+        if (selectedRoute?._id === routeToDelete) setSelectedRoute(null);
+        setRouteToDelete(null);
       }
     } catch (err) {
       setError(err.message || "Failed to delete route.");
@@ -307,9 +431,9 @@ const Dashboard = () => {
         const updated = resp.data.route;
         setRoutes(routes.map(r => r._id === updated._id ? updated : r));
         setSelectedRoute(updated);
-        alert(resp.data.analysis?.shouldReoptimize 
-          ? "⚠️ Road conditions changed! Route has been re-optimized for speed." 
-          : "✅ Route is still the most efficient despite traffic.");
+        console.log(resp.data.analysis?.shouldReoptimize 
+          ? "Route re-optimized" 
+          : "Route is efficient");
       }
     } catch (err) {
       setError("AI Analysis failed to connect.");
@@ -330,7 +454,6 @@ const Dashboard = () => {
         const updated = resp.data;
         setRoutes(routes.map(r => r._id === updated._id ? updated : r));
         setSelectedRoute(updated);
-        alert(driverId ? "Route assigned to driver successfully!" : "Driver unassigned.");
       }
     } catch (err) {
       setError("Failed to assign driver.");
@@ -377,6 +500,7 @@ const Dashboard = () => {
             <span className="role-badge">{user?.role}</span>
             <span className="user-name">{user?.name}</span>
           </div>
+          <NotificationCenter />
           <button onClick={() => setShowProfile(true)} className="header-btn settings-btn">⚙️ Settings</button>
           <button onClick={logout} className="header-btn logout-btn">Logout</button>
         </div>
@@ -479,48 +603,131 @@ const Dashboard = () => {
               <form onSubmit={isEditing ? handleEditSubmit : handleCreateRoute}>
                 {(isEditing ? editData.deliveries : formData.deliveries).map((d, i) => (
                   <div key={i} className="compact-row">
-                    <input 
-                      placeholder="Enter address..." 
-                      value={d.address} 
-                      onChange={(e) => {
-                        if (isEditing) {
-                          const next = [...editData.deliveries];
-                          next[i].address = e.target.value;
-                          setEditData({...editData, deliveries: next});
-                        } else {
-                          const next = [...formData.deliveries];
-                          next[i].address = e.target.value;
-                          setFormData({...formData, deliveries: next});
-                        }
-                      }} 
-                      required 
-                    />
-                    <div className="compact-controls">
-                      <select 
-                        value={d.priority} 
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        placeholder="Enter address..." 
+                        value={d.address} 
                         onChange={(e) => {
-                          const next = isEditing ? [...editData.deliveries] : [...formData.deliveries];
-                          next[i].priority = e.target.value;
-                          isEditing ? setEditData({...editData, deliveries: next}) : setFormData({...formData, deliveries: next});
-                        }}
-                      >
-                        <option value="normal">Normal</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="urgent">Urgent</option>
-                      </select>
-                      {(isEditing ? editData.deliveries.length : formData.deliveries.length) > 1 && (
-                        <button type="button" className="btn-icon-del" onClick={() => {
-                          const next = (isEditing ? editData.deliveries : formData.deliveries).filter((_, idx) => idx !== i);
-                          isEditing ? setEditData({...editData, deliveries: next}) : setFormData({...formData, deliveries: next});
-                        }}>✕</button>
+                          const val = e.target.value;
+                          fetchAddressSuggestions(val, i);
+                          if (isEditing) {
+                            const next = [...editData.deliveries];
+                            next[i].address = val;
+                            setEditData({...editData, deliveries: next});
+                          } else {
+                            const next = [...formData.deliveries];
+                            next[i].address = val;
+                            setFormData({...formData, deliveries: next});
+                          }
+                        }} 
+                        required 
+                        style={{ width: '100%' }}
+                      />
+                      {suggestions[i] && suggestions[i].length > 0 && (
+                        <ul className="autocomplete-dropdown">
+                          {suggestions[i].map((s, idx) => (
+                            <li 
+                              key={idx} 
+                              onMouseDown={(e) => {
+                                e.preventDefault(); // Prevent input blur
+                                selectSuggestion(s.label, i, isEditing);
+                              }}
+                            >
+                              📍 {s.label}
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </div>
-                  </div>
+                      <div className="compact-controls">
+                        <select 
+                          value={d.priority} 
+                          onChange={(e) => {
+                            const next = isEditing ? [...editData.deliveries] : [...formData.deliveries];
+                            next[i].priority = e.target.value;
+                            isEditing ? setEditData({...editData, deliveries: next}) : setFormData({...formData, deliveries: next});
+                          }}
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="medium">Medium</option>
+                          <option value="urgent">Urgent</option>
+                        </select>
+                        {(isEditing ? editData.deliveries.length : formData.deliveries.length) > 1 && (
+                          <button type="button" className="btn-icon-del" style={{ marginLeft: '10px' }} onClick={() => {
+                            const next = (isEditing ? editData.deliveries : formData.deliveries).filter((_, idx) => idx !== i);
+                            isEditing ? setEditData({...editData, deliveries: next}) : setFormData({...formData, deliveries: next});
+                          }}>✕</button>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                         {/* Hour Select */}
+                         <select
+                           className="dark-input"
+                           style={{ width: '60px', padding: '8px' }}
+                           value={(() => {
+                             if (!d.timeWindow || d.timeWindow === 'Anytime') return '9';
+                             const match = d.timeWindow.match(/(\d+):/);
+                             return match ? match[1] : '9';
+                           })()}
+                           onChange={(e) => {
+                             const stops = isEditing ? [...editData.deliveries] : [...formData.deliveries];
+                             const old = stops[i].timeWindow === 'Anytime' ? '9:00 AM' : stops[i].timeWindow;
+                             const parts = old.split(/[:\s]+/); // [9, 00, AM]
+                             stops[i].timeWindow = `${e.target.value}:${parts[1] || '00'} ${parts[2] || 'AM'}`;
+                             isEditing ? setEditData({...editData, deliveries: stops}) : setFormData({...formData, deliveries: stops});
+                           }}
+                         >
+                           {Array.from({length: 12}, (_, k) => k + 1).map(h => (
+                             <option key={h} value={h}>{h}</option>
+                           ))}
+                         </select>
+                         <span style={{fontWeight: 'bold'}}>:</span>
+                         {/* Minute Select */}
+                         <select
+                           className="dark-input"
+                           style={{ width: '60px', padding: '8px' }}
+                           value={(() => {
+                             if (!d.timeWindow || d.timeWindow === 'Anytime') return '00';
+                             const match = d.timeWindow.match(/:(\d+)/);
+                             return match ? match[1] : '00';
+                           })()}
+                           onChange={(e) => {
+                             const stops = isEditing ? [...editData.deliveries] : [...formData.deliveries];
+                             const old = stops[i].timeWindow === 'Anytime' ? '9:00 AM' : stops[i].timeWindow;
+                             const parts = old.split(/[:\s]+/);
+                             stops[i].timeWindow = `${parts[0] || '9'}:${e.target.value} ${parts[2] || 'AM'}`;
+                             isEditing ? setEditData({...editData, deliveries: stops}) : setFormData({...formData, deliveries: stops});
+                           }}
+                         >
+                           {['00', '15', '30', '45'].map(m => (
+                             <option key={m} value={m}>{m}</option>
+                           ))}
+                         </select>
+                         {/* AM/PM Select */}
+                         <select
+                           className="dark-input"
+                           style={{ width: '60px', padding: '8px' }}
+                           value={(() => {
+                             if (!d.timeWindow || d.timeWindow === 'Anytime') return 'AM';
+                             return d.timeWindow.includes('PM') ? 'PM' : 'AM';
+                           })()}
+                           onChange={(e) => {
+                             const stops = isEditing ? [...editData.deliveries] : [...formData.deliveries];
+                             const old = stops[i].timeWindow === 'Anytime' ? '9:00 AM' : stops[i].timeWindow;
+                             const parts = old.split(/[:\s]+/);
+                             stops[i].timeWindow = `${parts[0] || '9'}:${parts[1] || '00'} ${e.target.value}`;
+                             isEditing ? setEditData({...editData, deliveries: stops}) : setFormData({...formData, deliveries: stops});
+                           }}
+                         >
+                           <option value="AM">AM</option>
+                           <option value="PM">PM</option>
+                          </select>
+                      </div>
+                    </div>
                 ))}
                 <button type="button" className="btn-add-stop" onClick={() => {
-                  if (isEditing) setEditData({...editData, deliveries: [...editData.deliveries, {address: '', priority: 'normal'}]});
-                  else setFormData({...formData, deliveries: [...formData.deliveries, {address: '', priority: 'normal'}]});
+                  if (isEditing) setEditData({...editData, deliveries: [...editData.deliveries, {address: '', priority: 'normal', timeWindow: '9:00 AM'}]});
+                  else setFormData({...formData, deliveries: [...formData.deliveries, {address: '', priority: 'normal', timeWindow: '9:00 AM'}]});
                 }}>+ Add Stop</button>
                 <div className="vehicle-selection" style={{ 
                   marginBottom: '1.25rem', 
@@ -558,9 +765,36 @@ const Dashboard = () => {
                     <option value="van">Van / LCV (Expressways & Fast)</option>
                     <option value="truck">Heavy Truck (Restricted Roads)</option>
                   </select>
+
+                  <label style={{ display: 'block', marginTop: '1rem', marginBottom: '0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Vehicle Capacity (kg)
+                  </label>
+                  <input
+                    type="number"
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px', 
+                      borderRadius: '8px', 
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-white)',
+                      color: 'var(--text-main)',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      outline: 'none'
+                    }}
+                    value={isEditing ? (editData.vehicleData?.capacity || 1000) : (formData.vehicleData?.capacity || 1000)}
+                    onChange={(e) => {
+                      const capacity = parseInt(e.target.value);
+                      if (isEditing) {
+                        setEditData({ ...editData, vehicleData: { ...editData.vehicleData, capacity } });
+                      } else {
+                        setFormData({ ...formData, vehicleData: { ...formData.vehicleData, capacity } });
+                      }
+                    }}
+                  />
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '15px' }}>
                   <button type="submit" className="btn-create-route" disabled={creating}>
                     {creating ? 'Processing...' : (isEditing ? 'Save Changes' : 'Generate Route')}
                   </button>
@@ -659,31 +893,78 @@ const Dashboard = () => {
                         fontSize: '0.9rem',
                         display: 'inline-flex',
                         alignItems: 'center',
-                        zIndex: 9999,
-                        position: 'relative'
                       }}
                     >
                       ← Back to Dashboard
                     </button>
                   )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <h3>Route #{selectedRoute._id.slice(-6).toUpperCase()}</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      <h3 style={{ margin: 0 }}>Route #{selectedRoute._id.slice(-6).toUpperCase()}</h3>
+                      <div className="status-badge" style={{ 
+                        padding: '4px 10px', 
+                        borderRadius: '20px', 
+                        fontSize: '0.75rem', 
+                        backgroundColor: selectedRoute.status === 'active' ? '#dcfce7' : '#f1f5f9',
+                        color: selectedRoute.status === 'active' ? '#166534' : '#64748b',
+                        fontWeight: 700
+                      }}>
+                        {selectedRoute.status?.toUpperCase()}
+                      </div>
+                    </div>
+                    {selectedRoute.constraintsAlert && selectedRoute.constraintsAlert !== 'null' && (
+                      <div style={{ 
+                        background: 'linear-gradient(90deg, #fff7ed 0%, #ffedd5 100%)', 
+                        color: '#c2410c', 
+                        padding: '10px 16px', 
+                        borderRadius: '10px', 
+                        fontSize: '0.85rem', 
+                        fontWeight: 700, 
+                        border: '1px solid #fed7aa',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        boxShadow: '0 2px 8px rgba(251, 146, 60, 0.1)',
+                        animation: 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both'
+                      }}>
+                        <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+                        <div>
+                          <div style={{ textTransform: 'uppercase', fontSize: '0.7rem', opacity: 0.8 }}>Logistics Violation Detected</div>
+                          <div style={{ fontWeight: 600 }}>{selectedRoute.constraintsAlert}</div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="route-stats-summary">
-                    <span>Total Cost: <span className="stat-val">₹{(() => {
-                        const d = selectedRoute.totalDistance || 0;
-                        const wageRate = 15;
-                        const wage = Math.max(300, Math.round(d * wageRate));
-                        const fuel = selectedRoute.costBreakdown?.fuel || 0;
-                        const maint = selectedRoute.costBreakdown?.maintenance || 0;
-                        const tolls = selectedRoute.costBreakdown?.tolls || 0;
-                        return (fuel + maint + tolls + wage).toFixed(2);
-                    })()}</span></span>
+                     <span>Total Cost: <span className="stat-val">₹{
+                         (() => {
+                           const d = selectedRoute.totalDistance || 0;
+                           const wageRate = simRates.wage;
+                           const fuelPrice = simRates.fuel;
+                           const fuelQty = selectedRoute?.fuelRequiredLitres || (d / (selectedRoute?.vehicleData?.fuelEfficiency || 25));
+                           const fuel = fuelQty * fuelPrice;
+                           const wage = Math.max(300, Math.round(d * wageRate));
+                           const maint = selectedRoute.costBreakdown?.maintenance || 0;
+                           const tolls = selectedRoute.costBreakdown?.tolls || 0;
+                           return Math.round(fuel + maint + tolls + wage).toLocaleString('en-IN');
+                         })()
+                     }</span></span>
                     <span>Distance: <span className="stat-val">{selectedRoute.totalDistance || 0} km</span></span>
                     <span>Time: <span className="stat-val">{Math.floor((selectedRoute.estimatedTime || 0) / 60)}h {(selectedRoute.estimatedTime || 0) % 60}m</span></span>
+                    <span>Cap: <span className="stat-val">{selectedRoute.vehicleData?.capacity || 1000}kg</span></span>
                     {(selectedRoute.driverId || user?.role === 'admin') && (
                       <span className="role-badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>
-                        👤 Driver: {(selectedRoute.driverId && typeof selectedRoute.driverId === 'object' && selectedRoute.driverId !== null) ? selectedRoute.driverId.name : (selectedRoute.driverId ? 'Assigned' : 'Unassigned')}
+                        👤 Driver: {(() => {
+                          if (selectedRoute.driverId && typeof selectedRoute.driverId === 'object' && selectedRoute.driverId.name) {
+                            return selectedRoute.driverId.name;
+                          }
+                          const driverId = selectedRoute.driverId?._id || selectedRoute.driverId;
+                          if (driverId) {
+                            const driver = drivers.find(d => (d._id || d.id) === driverId);
+                            return driver ? driver.name : (typeof selectedRoute.driverId === 'string' ? 'Assigned' : 'Assigned');
+                          }
+                          return 'Unassigned';
+                        })()}
                       </span>
                     )}
                   </div>
@@ -691,7 +972,7 @@ const Dashboard = () => {
                 <div className="action-bar">
                   {user?.role === 'dispatcher' && selectedRoute.status !== 'completed' && !selectedRoute.driverId && (
                     <select 
-                      className="btn-action btn-export"
+                      className="btn-action btn-export btn-driver-select"
                       value={(selectedRoute.driverId && typeof selectedRoute.driverId === 'object' && selectedRoute.driverId !== null) ? (selectedRoute.driverId._id || selectedRoute.driverId.id) : (selectedRoute.driverId || '')}
                       onChange={(e) => handleAssignDriver(e.target.value)}
                       disabled={assigning}
@@ -754,7 +1035,6 @@ const Dashboard = () => {
                              <div style={{fontSize: '3rem', marginBottom: '10px'}}>✅</div>
                              <h2 style={{color: '#0f172a', marginBottom: '10px'}}>Route Fulfilled</h2>
                              <p style={{color: '#64748b'}}>This route was successfully completed by {selectedRoute.driverId?.name || 'the driver'}.</p>
-                             <button className="btn-action btn-pdf" onClick={() => exportToPDF(selectedRoute)} style={{marginTop: '20px'}}>Download Final Report</button>
                          </>
                      )}
                   </div>
@@ -765,6 +1045,7 @@ const Dashboard = () => {
                     isDriver={user?.role === 'driver'}
                     hasDriver={!!selectedRoute.driverId}
                     onComplete={handleRouteCompletion}
+                    onTruckMove={(coords) => setTruckCoords(coords)}
                   />
                 </div>
               )}
@@ -837,7 +1118,7 @@ const Dashboard = () => {
                 {/* Weather Insight Card */}
                 <div className="logistic-card" style={{ marginTop: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    <h4 style={{ margin: 0 }}>☁️ Weather Insight</h4>
+                    <h4 style={{ margin: 0 }}>☁️ Weather Insight ({weatherTarget === 'truck' ? 'Live Truck' : weatherTarget.charAt(0).toUpperCase() + weatherTarget.slice(1)})</h4>
                     <div className="segmented-toggle">
                         <button 
                             onClick={() => setWeatherTarget('source')}
@@ -847,13 +1128,27 @@ const Dashboard = () => {
                             onClick={() => setWeatherTarget('destination')}
                             className={`toggle-btn ${weatherTarget === 'destination' ? 'active' : ''}`}
                         >Destination</button>
+                        {selectedRoute.driverId && (
+                           <button 
+                               onClick={() => setWeatherTarget('truck')}
+                               className={`toggle-btn ${weatherTarget === 'truck' ? 'active' : ''}`}
+                           >🚚 Truck</button>
+                        )}
                     </div>
                   </div>
-                  
-                  {loadingWeather ? (
-                    <p style={{ fontStyle: 'italic', color: '#64748b' }}>Checking conditions...</p>
-                  ) : weather ? (
-                    <div className="weather-container">
+                  <div style={{ position: 'relative' }}>
+                    {loadingWeather && (
+                      <div style={{
+                        position: 'absolute', top: '-25px', right: 0,
+                        fontSize: '0.75rem', color: '#0066ff', fontWeight: 600,
+                        fontStyle: 'italic', animation: 'pulse 1.5s infinite'
+                      }}>
+                        Checking conditions...
+                      </div>
+                    )}
+                    
+                    {weather ? (
+                      <div className="weather-container" style={{ opacity: loadingWeather ? 0.6 : 1, transition: 'opacity 0.3s ease' }}>
                         <div className="weather-main-row" style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '15px' }}>
                           <div className="weather-icon" style={{ fontSize: '3rem' }}>
                             {weather.condition.toLowerCase().includes('cloud') ? '☁️' : 
@@ -913,13 +1208,15 @@ const Dashboard = () => {
                            </div>
                         </div>
                     </div>
-                  ) : (
-                    <p style={{ color: '#64748b' }}>Select a route to view local weather conditions.</p>
-                  )}
+                    ) : (
+                      <p style={{ color: '#64748b' }}>Select a route to view local weather conditions.</p>
+                    )}
+                  </div>
                 </div>
+
               </div>
 
-              {/* Real-Time Intelligence Feed - Hide if trip is completed */}
+            {/* Real-Time Intelligence Feed - Hide if trip is completed */}
               {selectedRoute.status !== 'completed' && (
                 <div className="intel-card">
                   <div className="intel-header">
@@ -941,22 +1238,63 @@ const Dashboard = () => {
                           </div>
                         ))
                       ) : (
-                        <>
-                          <div className="intel-item">
-                              <div className="intel-time">Just now</div>
-                              <div className="intel-content">
-                                  <span className="intel-tag tag-optimize">Auto-Optimize</span>
-                                  Monitoring route for congestion. Current path is optimal according to latest traffic data.
-                              </div>
-                          </div>
-                          <div className="intel-item">
-                              <div className="intel-time">Live</div>
-                              <div className="intel-content">
-                                  <span className="intel-tag tag-weather">Weather</span>
-                                  Weather conditions at destination are being monitored. No safety alerts active.
-                              </div>
-                          </div>
-                        </>
+                        (() => {
+                            const traffic = selectedRoute.trafficAnalysis || {};
+                            const delay = traffic.delayMins || 0;
+                            const speed = traffic.avgSpeedKmh || 0;
+                            const hasTraffic = !!selectedRoute.trafficAnalysis;
+                            
+                            return (
+                              <>
+                                <div className="intel-item">
+                                    <div className="intel-time">Live</div>
+                                    <div className="intel-content">
+                                        <span className={`intel-tag ${delay > 15 ? 'tag-traffic' : 'tag-optimize'}`}>
+                                            {delay > 5 ? 'Congestion' : 'Traffic Flow'}
+                                        </span>
+                                        {hasTraffic 
+                                          ? (
+                                            <div>
+                                              <div style={{fontWeight:500}}>{`Avg Speed: ${speed} km/h. Impact: ${delay > 0 ? `+${delay} min delay.` : 'No Delay.'}`}</div>
+                                              <div style={{fontSize:'1rem', marginTop:'4px', color:'#fbfcfeff'}}>
+                                                {delay > 2 ? "Heavy congestion impacting arrival times." : "Traffic flow is smooth with optimal velocity."}
+                                              </div>
+                                            </div>
+                                          )
+                                          : 'Accessing satellite traffic telemetry...'
+                                        }
+                                    </div>
+                                </div>
+                                {delay > 10 && (
+                                   <div className="intel-item">
+                                      <div className="intel-time" style={{color:'#dc2626'}}>Alert</div>
+                                      <div className="intel-content">
+                                          <span className="intel-tag tag-traffic" style={{background:'#dc2626', color:'white'}}>DELAYS</span>
+                                          Significant route delays detected. Schedule adjustment recommended.
+                                      </div>
+                                   </div>
+                                )}
+                                <div className="intel-item">
+                                    <div className="intel-time">Now</div>
+                                    <div className="intel-content">
+                                        <span className="intel-tag tag-weather">Weather</span>
+                                        {weather 
+                                          ? (
+                                            <div>
+                                              <div style={{fontWeight:500}}>{`At ${weatherTarget === 'truck' ? 'Live Truck' : weatherTarget.charAt(0).toUpperCase() + weatherTarget.slice(1)}: ${weather.condition}, ${Math.round(weather.temperature)}°C`}</div>
+                                              <div style={{fontSize:'1rem', marginTop:'4px', color:'#fbfcfeff'}}>
+                                                 {weather.condition.toLowerCase().match(/(rain|mist|fog|snow|storm)/) 
+                                                   ? "Visibility/traction reduced. Caution advised." 
+                                                   : "Weather is clear and optimal for transit."}
+                                              </div>
+                                            </div>
+                                          )
+                                          : 'Monitoring meteorological conditions...'}
+                                    </div>
+                                </div>
+                              </>
+                            );
+                          })()
                       )}
                   </div>
                 </div>
@@ -969,51 +1307,40 @@ const Dashboard = () => {
                     <div 
                       key={i} 
                       className="stop-node"
-                      draggable={user?.role === 'dispatcher'} // Only dispatcher can reorder
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('text/plain', i);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault(); // Necessary to allow dropping
-                        e.dataTransfer.dropEffect = 'move';
-                      }}
-                      onDrop={async (e) => {
-                        e.preventDefault();
-                        const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
-                        const toIndex = i;
-                        
-                        if (fromIndex === toIndex) return;
-                        
-                        // Reorder array
-                        const newRoute = [...selectedRoute.route];
-                        const [movedItem] = newRoute.splice(fromIndex, 1);
-                        newRoute.splice(toIndex, 0, movedItem);
-                        
-                        // Optimistic Update
-                        const updatedRouteObj = { ...selectedRoute, route: newRoute };
-                        setSelectedRoute(updatedRouteObj);
-                        
-                        try {
-                           // Save new order to backend
-                           await apiService.updateRoute(selectedRoute._id, { route: newRoute });
-                           // Ideally, we might trigger a re-calc here if the order drastically changes distance
-                        } catch (err) {
-                           console.error("Failed to save reorder", err);
-                           // Revert on error
-                           setSelectedRoute(selectedRoute); 
-                           alert("Failed to save new order.");
-                        }
-                      }}
-                      style={{ cursor: user?.role === 'dispatcher' ? 'grab' : 'default', opacity: 1 }}
+                      style={{ cursor: 'default', opacity: 1 }}
                     >
                       <div className="stop-index">{i + 1}</div>
                       <div className="stop-details">
                         <p>{s?.address || 'No Address'}</p>
                         <span className="p-badge">Priority: {s?.priority || 'normal'}</span>
+                        <span className="p-badge" style={{marginLeft: '10px'}}>Window: {s?.timeWindow || 'Anytime'}</span>
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* AI Logistics Strategy - Themed and Integrated */}
+              <div className="logistic-card" style={{ marginTop: '2rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.4rem' }}>🧠</span> AI Logistics Strategy
+                  </h4>
+                </div>
+                <div style={{ 
+                  padding: '1.25rem', 
+                  background: 'var(--bg-light)', 
+                  borderRadius: '12px', 
+                  fontSize: '0.95rem', 
+                  lineHeight: '1.7', 
+                  color: 'var(--text-main)', 
+                  border: '1px solid var(--border-color)', 
+                  fontStyle: selectedRoute.reasoning ? 'normal' : 'italic'
+                }}>
+                  {selectedRoute.reasoning || "Reasoning data being synthesized by fleet intelligence..."}
+                </div>
+                <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right', fontWeight: 500 }}>
+                  Insights powered by FleetFlow Intelligence Engine
                 </div>
               </div>
             </div>
@@ -1035,6 +1362,13 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div className="stat-card">
+                      <span className="sc-icon">✅</span>
+                      <div className="sc-info">
+                        <span className="sc-label">Completed Shipments</span>
+                        <span className="sc-val">{routes.filter(r => r.status === 'completed').length}</span>
+                      </div>
+                    </div>
+                    <div className="stat-card">
                       <span className="sc-icon">🚛</span>
                       <div className="sc-info">
                         <span className="sc-label">Active Shipments</span>
@@ -1048,13 +1382,14 @@ const Dashboard = () => {
                         <span className="sc-val">{routes.filter(r => r.estimatedTime > 120 && r.status === 'active').length}</span>
                       </div>
                     </div>
-                    <div className="stat-card">
+                      <div className="stat-card">
                       <span className="sc-icon">👤</span>
                       <div className="sc-info">
                         <span className="sc-label">Active Drivers</span>
                         <span className="sc-val">{new Set(routes.filter(r => r.driverId).map(r => r.driverId._id || r.driverId)).size}</span>
                       </div>
                     </div>
+                    
                   </div>
                   <div className="intel-card" style={{ width: '100%', maxWidth: '800px', textAlign: 'left', margin: '30px auto' }}>
                     <div className="intel-header">
@@ -1098,9 +1433,7 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '10px' }}>
-                    💡 <em>Pro Tip: Select a specific route from the sidebar to view detailed AI optimization logs for that journey.</em>
-                  </p>
+
                 </div>
               ) : (
                 <>
@@ -1121,6 +1454,33 @@ const Dashboard = () => {
           )}
         </section>
       </main>
+      {/* Custom Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-card delete-confirm-modal">
+            <div className="modal-icon-header">
+              <span className="warning-icon">⚠️</span>
+            </div>
+            <h3>Delete Route</h3>
+            <p>Are you sure you want to remove this route? This action will archive the route and cannot be undone.</p>
+            <div className="modal-actions">
+              <button 
+                className="btn-modal btn-cancel" 
+                onClick={() => { setShowDeleteConfirm(false); setRouteToDelete(null); }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-modal btn-delete-confirm" 
+                onClick={confirmDelete}
+              >
+                Delete Route
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && <div className="error-toast">{error}</div>}
     </div>
   );

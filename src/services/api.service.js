@@ -48,10 +48,18 @@ class ApiService {
 
     try {
       const response = await fetch(url, config);
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+         // If JSON parsing fails, it might be an HTML error page or empty body
+         if (!response.ok) {
+            throw new Error(`Server Error (${response.status}): ${response.statusText || 'Unknown Error'}`);
+         }
+      }
 
       if (!response.ok) {
-        throw new Error(data.message || 'Request failed');
+        throw new Error(data?.message || `Request failed with status ${response.status}`);
       }
 
       return data;
@@ -64,6 +72,14 @@ class ApiService {
   // Auth API calls
   async register(userData) {
     return this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+      requireAuth: false,
+    });
+  }
+
+  async googleComplete(userData) {
+    return this.request('/auth/google-complete', {
       method: 'POST',
       body: JSON.stringify(userData),
       requireAuth: false,
@@ -104,6 +120,13 @@ class ApiService {
     });
   }
 
+  // Search locations (autocomplete)
+  async searchLocation(query) {
+    if (!query || query.length < 3) return { success: true, data: [] };
+    return this.request(`/routes/location-search?q=${encodeURIComponent(query)}`);
+  }
+
+  // Routes
   async getRoutes(status = null, driverId = null) {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
@@ -164,6 +187,25 @@ class ApiService {
   // AI Intelligence API
   async getFleetAnalysis() {
     return this.request('/routes/analysis');
+  }
+
+  async getAIHealth() {
+    return this.request('/routes/ai-health');
+  }
+
+  // Payment API
+  async createPaymentOrder(amount, plan = 'pro') {
+    return this.request('/payment/create-order', {
+      method: 'POST',
+      body: JSON.stringify({ amount, plan }),
+    });
+  }
+
+  async verifyPayment(paymentData) {
+    return this.request('/payment/verify', {
+      method: 'POST',
+      body: JSON.stringify(paymentData),
+    });
   }
 
   // Health check

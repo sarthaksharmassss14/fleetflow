@@ -6,6 +6,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ToastProvider } from "./context/ToastContext";
 import Header from "./components/Header";
 import Hero from "./components/Hero";
 import Features from "./components/Features";
@@ -17,6 +18,12 @@ import Footer from "./components/Footer";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
+import AuthSuccess from "./pages/AuthSuccess";
+import Pricing from "./pages/Pricing";
+import { 
+  About, Blog, Careers, Contact, 
+  PrivacyPolicy, TermsOfService, GDPRCompliance, Security 
+} from "./pages/StaticPages";
 import "./App.css";
 
 // Landing Page Component
@@ -53,12 +60,26 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <ToastProvider>
+        <Router>
         <div className="App">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/auth-success" element={<AuthSuccess />} />
+            <Route path="/pricing" element={<Pricing />} />
+            
+            {/* Static Pages */}
+            <Route path="/about" element={<About />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/careers" element={<Careers />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/gdpr" element={<GDPRCompliance />} />
+            <Route path="/security" element={<Security />} />
+
             <Route
               path="/dashboard"
               element={
@@ -70,6 +91,7 @@ function App() {
           </Routes>
         </div>
       </Router>
+      </ToastProvider>
     </AuthProvider>
   );
 }

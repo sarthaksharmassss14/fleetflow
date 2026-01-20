@@ -12,86 +12,155 @@ export const exportToPDF = (route) => {
         return;
     }
     
+    // Create new PDF instance
     const doc = new jsPDF();
     const routeId = route._id ? route._id.toString().slice(-6).toUpperCase() : "UNKNOWN";
     const status = route.status ? route.status.toUpperCase() : "PENDING";
-    const createdAt = route.createdAt ? new Date(route.createdAt).toLocaleString() : new Date().toLocaleString();
-
-    // Title
-    doc.setFontSize(20);
-    doc.setTextColor(0, 102, 255); // FleetFlow Blue
-    doc.text(`FleetFlow Route Plan #${routeId}`, 14, 22);
-    
-    // Route Info
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Created: ${createdAt}`, 14, 30);
-    doc.text(`Status: ${status}`, 14, 36);
-    doc.text(`Estimated Time: ${route.estimatedTime || 0} min`, 14, 42);
-    
-    // Financial Breakdown
-    doc.setTextColor(16, 185, 129); // Green for Costs
-    doc.text(`Fuel Cost: INR ${route.costBreakdown?.fuel?.toFixed(2) || '0.00'}`, 14, 48);
-    doc.text(`Driver Wage: INR ${route.costBreakdown?.time?.toFixed(2) || '750.00'}`, 14, 54);
-    doc.text(`Maint. Cost: INR ${route.costBreakdown?.maintenance?.toFixed(2) || '0.00'}`, 14, 60);
-    
-    doc.setTextColor(0, 102, 255); // Blue for Total
-    doc.text(`Total Running Cost: INR ${route.costBreakdown?.total?.toFixed(2) || '0.00'}`, 14, 66);
-
-    // Source & Destination
     const stops = Array.isArray(route.route) ? route.route : [];
-    if (stops.length > 0) {
-        doc.text(`Source: ${stops[0].address}`, 14, 72);
-        doc.text(`Destination: ${stops[stops.length-1].address}`, 14, 78);
+    const source = stops.length > 0 ? (stops[0].address || "N/A") : "N/A";
+    const destination = stops.length > 1 ? (stops[stops.length-1].address || "N/A") : (stops.length === 1 ? (stops[0].address || "N/A") : "N/A");
+
+    // Header Color Block
+    doc.setFillColor(0, 102, 255);
+    doc.rect(0, 0, 210, 40, 'F');
+    
+    doc.setFontSize(22);
+    doc.setTextColor(255, 255, 255);
+    doc.text("FLEETFLOW LOGISTICS REPORT", 14, 20);
+    doc.setFontSize(10);
+    doc.text(`REPORT ID: FF-${routeId} | GENERATED: ${new Date().toLocaleString()}`, 14, 28);
+    
+    let currentY = 55;
+
+    // Overview Section
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Route Overview", 14, currentY);
+    currentY += 10;
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    const summaryX1 = 14;
+    const summaryX2 = 110;
+    
+    doc.text(`Route ID: #${routeId}`, summaryX1, currentY);
+    doc.text(`Vehicle: ${route.vehicleData?.type?.toUpperCase() || 'VAN'}`, summaryX2, currentY);
+    currentY += 6;
+    
+    doc.text(`Status: ${status}`, summaryX1, currentY);
+    doc.text(`Max Capacity: ${route.vehicleData?.capacity || 1000} kg`, summaryX2, currentY);
+    currentY += 6;
+    
+    doc.text(`Distance: ${route.totalDistance || 0} km`, summaryX1, currentY);
+    doc.text(`Driver: ${route.driverId?.name || (typeof route.driverId === 'string' ? route.driverId : 'Unassigned')}`, summaryX2, currentY);
+    currentY += 6;
+    
+    doc.text(`Est. Travel Time: ${route.estimatedTime || 0} min`, summaryX1, currentY);
+    doc.text(`Total Stops: ${stops.length}`, summaryX2, currentY);
+    currentY += 12;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Path Details", 14, currentY);
+    currentY += 8;
+    doc.setFont("helvetica", "normal");
+    doc.text(`From: ${source}`, 14, currentY);
+    currentY += 6;
+    doc.text(`To:   ${destination}`, 14, currentY);
+    currentY += 12;
+
+    // Financial Table
+    if (doc.autoTable) {
+        doc.setFont("helvetica", "bold");
+        doc.text("Financial Breakdown", 14, currentY);
+        currentY += 5;
+        
+        const costTableData = [
+            ["Fuel Cost", `INR ${route.costBreakdown?.fuel?.toLocaleString('en-IN') || '0'}`],
+            ["Wages", `INR ${route.costBreakdown?.time?.toLocaleString('en-IN') || '0'}`],
+            ["Maintenance", `INR ${route.costBreakdown?.maintenance?.toLocaleString('en-IN') || '0'}`],
+            ["Tolls", `INR ${route.costBreakdown?.tolls?.toLocaleString('en-IN') || '0'}`],
+            ["Total Cost", `INR ${route.costBreakdown?.total?.toLocaleString('en-IN') || '0'}`]
+        ];
+
+        doc.autoTable({
+            startY: currentY,
+            head: [['Category', 'Amount']],
+            body: costTableData,
+            theme: 'striped',
+            headStyles: { fillColor: [0, 102, 255] },
+            styles: { fontSize: 9 },
+            margin: { right: 110 }
+        });
+        
+        // AI Reasoning - Positioned to the right of cost table
+        if (route.reasoning) {
+            doc.setFont("helvetica", "bold");
+            doc.text("AI Optimization Logic", 110, currentY);
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            const splitReasoning = doc.splitTextToSize(route.reasoning, 85);
+            doc.text(splitReasoning, 110, currentY + 7);
+        }
+
+        currentY = doc.lastAutoTable.finalY + 15;
+    } else {
+        // Fallback if autoTable fails to load
+        doc.text("AutoTable plugin not detected. Stops list skipped.", 14, currentY);
+        currentY += 10;
     }
 
-    // Table Columns
-    const tableColumn = ["Seq", "Type", "Address", "Priority", "Time Window", "Expected Arrival"];
-    const tableRows = [];
+    // Stops Sequence Table
+    if (doc.autoTable && stops.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("Stop Sequence Details", 14, currentY);
+        
+        const tableColumn = ["#", "Type", "Address", "Priority", "Window", "Arrival (Est)"];
+        const tableRows = [];
 
-    stops.forEach((stop, index) => {
-      const arrivalDate = route.createdAt ? new Date(route.createdAt) : new Date();
-      const arrivalTime = new Date(arrivalDate.getTime() + index * 30 * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-      
-      let type = "Stop";
-      if (index === 0) type = "Source";
-      else if (index === stops.length - 1) type = "Destination";
+        stops.forEach((stop, index) => {
+          const arrivalDate = route.createdAt ? new Date(route.createdAt) : new Date();
+          const arrivalTime = new Date(arrivalDate.getTime() + index * 30 * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          
+          let type = "Mid-Stop";
+          if (index === 0) type = "Source";
+          else if (index === stops.length - 1) type = "Destination";
 
-      const stopData = [
-        index + 1,
-        type,
-        stop.address || "Unknown Address",
-        stop.priority || "normal",
-        stop.timeWindow || "Anytime",
-        arrivalTime
-      ];
-      tableRows.push(stopData);
-    });
+          tableRows.push([
+            index + 1,
+            type,
+            stop.address || "Unknown",
+            (stop.priority || "normal").toUpperCase(),
+            stop.timeWindow || "Anytime",
+            arrivalTime
+          ]);
+        });
 
-    if (doc.autoTable) {
-      doc.autoTable({
-        startY: 85, // Shifted down for Source/Dest texts
-        head: [tableColumn],
-        body: tableRows,
-        theme: 'grid',
-        headStyles: { fillColor: [75, 192, 192] },
-      });
+        doc.autoTable({
+          startY: currentY + 5,
+          head: [tableColumn],
+          body: tableRows,
+          theme: 'grid',
+          headStyles: { fillColor: [33, 37, 41] },
+          styles: { fontSize: 8 },
+        });
     }
 
     // Footer
     const pageCount = doc.internal.getNumberOfPages();
     for(let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(10);
-      doc.setTextColor(150);
-      doc.text('Page ' + i + ' of ' + pageCount, 14, doc.internal.pageSize.height - 10);
-      doc.text('Generated by FleetFlow - AI Logistics Optimizer', doc.internal.pageSize.width - 14, doc.internal.pageSize.height - 10, {align: 'right'});
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10);
+        doc.text('FleetFlow - AI Logistics Management System', doc.internal.pageSize.width - 14, doc.internal.pageSize.height - 10, {align: 'right'});
     }
 
     doc.save(`fleetflow_route_${routeId}.pdf`);
   } catch (err) {
     console.error("Critical PDF Export Error:", err);
-    alert("PDF generation failed. Please ensure the route has been fully optimized.");
+    alert("PDF generation failed. A full report is still available in the Dashboard.");
   }
 };
 
@@ -102,10 +171,29 @@ export const exportToPDF = (route) => {
 export const exportToCSV = (route) => {
   try {
     const routeId = route?._id ? route._id.toString().slice(-6).toUpperCase() : "UNKNOWN";
-    // Added 'Type' column
-    const headers = ["Sequence,Type,Address,Priority,Time Window,Expected Arrival"];
-    
     const stops = Array.isArray(route?.route) ? route.route : [];
+    
+    // Metadata / Summary Rows
+    const summary = [
+        ["ROUTE LOGISTICS REPORT"],
+        ["Route ID", routeId],
+        ["Created At", route.createdAt || new Date().toISOString()],
+        ["Status", route.status || "Draft"],
+        ["Total Distance (km)", route.totalDistance || 0],
+        ["Estimated Time (min)", route.estimatedTime || 0],
+        ["Vehicle Type", route.vehicleData?.type || "van"],
+        ["Vehicle Capacity (kg)", route.vehicleData?.capacity || 1000],
+        ["Driver Name", route.driverId?.name || "Unassigned"],
+        ["Total Cost (INR)", route.costBreakdown?.total || 0],
+        ["Fuel Cost", route.costBreakdown?.fuel || 0],
+        ["Wages", route.costBreakdown?.time || 0],
+        ["Maintenance", route.costBreakdown?.maintenance || 0],
+        ["Tolls", route.costBreakdown?.tolls || 0],
+        [""], // Empty line
+        ["STOP SEQUENCE DETAILS"],
+        ["Seq", "Type", "Address", "Priority", "Time Window", "Expected Arrival"]
+    ];
+    
     const rows = stops.map((stop, index) => {
       const arrivalDate = route.createdAt ? new Date(route.createdAt) : new Date();
       const arrivalTime = new Date(arrivalDate.getTime() + index * 30 * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -114,10 +202,19 @@ export const exportToCSV = (route) => {
       if (index === 0) type = "Source";
       else if (index === stops.length - 1) type = "Destination";
 
-      return `${index + 1},${type},"${stop.address || 'Unknown'}",${stop.priority || 'normal'},${stop.timeWindow || "Anytime"},${arrivalTime}`;
+      return [
+          index + 1,
+          type,
+          `"${stop.address || 'Unknown'}"`,
+          stop.priority || 'normal',
+          stop.timeWindow || "Anytime",
+          arrivalTime
+      ];
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
+    const csvContent = "data:text/csv;charset=utf-8," + 
+        [...summary, ...rows].map(e => e.join(",")).join("\n");
+        
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);

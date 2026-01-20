@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../services/api.service';
+import socketService from '../services/socket.service';
 
 const AuthContext = createContext(null);
 
@@ -20,6 +21,12 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      socketService.connect(user);
+    }
+  }, [isAuthenticated, user]);
 
   const checkAuth = async () => {
     const token = apiService.getToken();
@@ -57,6 +64,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const googleComplete = async (userData) => {
+    try {
+      const response = await apiService.googleComplete(userData);
+      if (response.success) {
+        const { user, token } = response.data;
+        apiService.setToken(token);
+        setUser(user);
+        setIsAuthenticated(true);
+        return { success: true };
+      }
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
   const register = async (userData) => {
     try {
       const response = await apiService.register(userData);
@@ -74,6 +96,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     apiService.removeToken();
+    socketService.disconnect();
     setUser(null);
     setIsAuthenticated(false);
   };
@@ -84,6 +107,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
+    googleComplete,
     logout,
     checkAuth,
   };

@@ -44,6 +44,13 @@
   font-weight: 400;
 }
 
+.oauth-hint {
+  margin-top: 0.5rem;
+  color: var(--primary-color);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -118,6 +125,57 @@
   text-decoration: underline;
 }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.5rem 0;
+  color: var(--text-light);
+  font-size: 0.875rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.auth-divider:not(:empty)::before {
+  margin-right: .75rem;
+}
+
+.auth-divider:not(:empty)::after {
+  margin-left: .75rem;
+}
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: white;
+  color: #1f1f1f;
+  border: 1px solid var(--border-color);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.btn-google:hover {
+  background: #f8f9fa;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.google-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* ... previous CSS ... */
 @media (max-width: 768px) {
   .auth-card {
     padding: 2rem;
@@ -130,4 +188,20 @@
   .auth-header h2 {
     font-size: 1.125rem;
   }
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-light);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: var(--primary-color);
 }

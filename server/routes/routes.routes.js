@@ -3,12 +3,15 @@ import RoutePlan from "../models/RoutePlan.model.js";
 import RealTimeUpdate from "../models/RealTimeUpdate.model.js";
 import geminiService from "../services/gemini.service.js";
 import externalService from "../services/external.service.js";
+import socketService from "../services/socket.service.js";
 import { authenticate, authorize } from "../middleware/auth.middleware.js";
+import { aiRateLimiter, apiRateLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(apiRateLimiter);
 
 // Get weather data for an address
 router.get("/weather", async (req, res) => {
@@ -24,21 +27,32 @@ router.get("/weather", async (req, res) => {
   }
 });
 
-// Analyze fleet status using AI
-router.get("/analysis", async (req, res) => {
+// Search address/location (Autocomplete)
+router.get("/location-search", async (req, res) => {
   try {
-    const activeRoutes = await RoutePlan.find({ status: { $ne: 'completed' }, isArchived: { $ne: true } })
-      .populate("driverId", "name");
-      
-    const analysis = await geminiService.analyzeFleetStatus(activeRoutes);
-    res.json({ success: true, data: analysis });
+    const { q } = req.query;
+    if (!q) return res.json({ success: true, data: [] });
+    
+    const results = await externalService.searchAddress(q);
+    res.json({ success: true, data: results });
+  } catch (error) {
+    console.error("Location search error:", error);
+    res.status(500).json({ success: false, data: [] });
+  }
+});
+// AI Health Check
+router.get("/ai-health", async (req, res) => {
+  try {
+    const health = await geminiService.checkHealth();
+    res.json({ success: true, data: health });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
+
 // Generate optimized route
-router.post("/optimize", async (req, res) => {
+router.post("/optimize", aiRateLimiter, async (req, res) => {
   try {
     const { deliveries, vehicleData, constraints } = req.body;
     console.log("Optimize Request Body:", JSON.stringify(req.body, null, 2));
@@ -65,12 +79,16 @@ router.post("/optimize", async (req, res) => {
       estimatedTime: optimizedRoute.estimatedTime,
       totalDistance: optimizedRoute.totalDistance,
       costBreakdown: optimizedRoute.costBreakdown,
+      trafficAnalysis: optimizedRoute.trafficAnalysis,
+      vehicleData: vehicleData || {},
       reasoning: optimizedRoute.reasoning,
+      constraintsAlert: optimizedRoute.constraintsAlert || null,
       vehicleData: vehicleData || {},
       status: "draft",
     });
 
     await routePlan.save();
+    socketService.notifyRouteChange(routePlan, 'create', 'New optimized route created');
 
     res.status(201).json({
       success: true,
@@ -122,6 +140,24 @@ router.get("/", async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+});
+
+// Get Fleet-wide Analysis
+router.get("/analysis", async (req, res) => {
+  try {
+    const activeRoutes = await RoutePlan.find({ status: 'active', isArchived: false })
+      .populate("driverId", "name");
+    
+    // Call Gemini for high-level fleet intelligence
+    const fleetAnalysis = await geminiService.analyzeFleetStatus(activeRoutes);
+    
+    res.json({ 
+      success: true, 
+      data: fleetAnalysis
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -178,15 +214,35 @@ router.patch("/:id", async (req, res) => {
       });
     }
 
-    if (driverId) route.driverId = driverId;
+    if (driverId !== undefined) route.driverId = driverId;
     if (status) route.status = status;
 
     await route.save();
+    
+    // Fetch populated route for UI consistency
+    const updatedRoute = await RoutePlan.findById(route._id)
+      .populate("userId", "name email")
+      .populate("driverId", "name email");
+    
+    // Determine notification type and message
+    let notifType = 'update';
+    let notifMessage = 'Route updated';
 
+    if (status === 'completed') {
+      notifType = 'completion';
+      notifMessage = 'Trip completed and delivered';
+    } else if (driverId !== undefined) {
+      notifType = 'assignment';
+      notifMessage = driverId ? 'Driver assigned' : 'Driver unassigned';
+    }
+    
+    // Notify relevant roles
+    socketService.notifyRouteChange(updatedRoute, notifType, notifMessage);
+    
     res.json({
       success: true,
-      message: "Route updated successfully",
-      data: route,
+      message: "Route assigned successfully",
+      data: updatedRoute,
     });
   } catch (error) {
     res.status(500).json({
@@ -197,7 +253,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 // Full Edit route
-router.put("/:id", async (req, res) => {
+router.put("/:id", aiRateLimiter, async (req, res) => {
   try {
     const { deliveries, vehicleData, status } = req.body;
     const route = await RoutePlan.findById(req.params.id);
@@ -229,21 +285,28 @@ router.put("/:id", async (req, res) => {
        route.estimatedTime = optimizedRoute.estimatedTime;
        route.totalDistance = optimizedRoute.totalDistance;
        route.costBreakdown = optimizedRoute.costBreakdown;
+       route.trafficAnalysis = optimizedRoute.trafficAnalysis;
        route.reasoning = optimizedRoute.reasoning;
+       route.constraintsAlert = optimizedRoute.constraintsAlert || null;
     }
 
     if (vehicleData) route.vehicleData = vehicleData;
     if (status) route.status = status;
 
     await route.save();
-    res.json({ success: true, data: route });
+    const updatedRoute = await RoutePlan.findById(route._id)
+      .populate("userId", "name email")
+      .populate("driverId", "name email");
+
+    socketService.notifyRouteChange(updatedRoute, 'update', 'Route details updated');
+    res.json({ success: true, data: updatedRoute });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // Re-optimize route with real-time data
-router.post("/:id/reoptimize", async (req, res) => {
+router.post("/:id/reoptimize", aiRateLimiter, async (req, res) => {
   try {
     const route = await RoutePlan.findById(req.params.id);
     if (!route) return res.status(404).json({ success: false, message: "Route not found" });
@@ -262,11 +325,12 @@ router.post("/:id/reoptimize", async (req, res) => {
     const { trafficData, weatherData } = req.body;
     
     // Fallback to real API if simulation data not provided
-    const lat = route.route[0]?.coordinates?.lat || 24.5854;
-    const lng = route.route[0]?.coordinates?.lng || 73.7125;
+    const firstStop = route.route[0];
+    const lat = firstStop?.coordinates?.lat;
+    const lon = firstStop?.coordinates?.lng;
     
-    const traffic = trafficData || await externalService.getTrafficData(lat, lng);
-    const weather = weatherData || await externalService.getWeatherData(route.deliveries[0].address);
+    const traffic = trafficData || (lat && lon ? await externalService.getTrafficData(lat, lon) : null);
+    const weather = weatherData || await externalService.getWeatherData(firstStop?.address || route.deliveries[0]?.address, lat, lon);
 
     const analysisResponse = await geminiService.analyzeRouteWithContext(route, traffic, weather);
 
@@ -289,6 +353,15 @@ router.post("/:id/reoptimize", async (req, res) => {
       await route.save();
     }
 
+    // Always notify about simulation result in the notification bell
+    socketService.notifyRouteChange(
+      route, 
+      analysisResponse.analysis?.shouldReoptimize ? 'reoptimize' : 'update',
+      analysisResponse.analysis?.shouldReoptimize 
+        ? 'Route re-optimized for speed/traffic' 
+        : 'Route checked: Still the most efficient path'
+    );
+
     const update = new RealTimeUpdate({
       routePlanId: route._id,
       trafficData: traffic || {},
@@ -306,6 +379,8 @@ router.post("/:id/reoptimize", async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+
 
 // Delete route
 router.delete("/:id", async (req, res) => {

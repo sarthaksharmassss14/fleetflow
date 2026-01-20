@@ -1,24 +1,49 @@
 import dotenv from "dotenv";
 dotenv.config(); // Load environment variables FIRST
 
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception thrown:', err);
+});
+
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import authRoutes from "./routes/auth.routes.js";
 import routeRoutes from "./routes/routes.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import paymentRoutes from "./routes/payment.routes.js";
 import workerService from "./services/worker.service.js";
+import passport from "passport";
+import configurePassport from "./services/passport.service.js";
+import http from "http";
+import socketService from "./services/socket.service.js";
 
 // Start background workers
 workerService.start();
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
+// Initialize Socket.io
+socketService.init(server);
+
 // Middleware
-app.use(cors());
+// Middleware
+app.use(cors({
+  origin: [process.env.CLIENT_URL, 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:5173'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Passport initialization
+configurePassport();
+app.use(passport.initialize());
 
 // Database connection
 import cluster from "node:cluster";
@@ -81,6 +106,7 @@ if (cluster.isPrimary && isProduction) {
   app.use("/api/auth", authRoutes);
   app.use("/api/routes", routeRoutes);
   app.use("/api/users", userRoutes);
+  app.use("/api/payment", paymentRoutes);
 
   // Error handling middleware
   app.use((err, req, res, next) => {
@@ -96,7 +122,7 @@ if (cluster.isPrimary && isProduction) {
     res.status(404).json({ success: false, message: "Route not found" });
   });
 
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`🚀 Worker ${process.pid} serving on http://localhost:${PORT}`);
   });
 }
