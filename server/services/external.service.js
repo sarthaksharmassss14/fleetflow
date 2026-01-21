@@ -218,7 +218,11 @@ class ExternalService {
     }
     
     try {
-      const locations = points.map(p => `${p.lat},${p.lng}`).join(':');
+      // Filter out invalid coordinates to prevent 400 errors
+      const validPoints = points.filter(p => p && typeof p.lat === 'number' && typeof p.lng === 'number');
+      if (validPoints.length < 2) return null;
+      
+      const locations = validPoints.map(p => `${p.lat},${p.lng}`).join(':');
       
       // Determine TomTom specific vehicle parameter
       const tomtomType = vehicleType === 'truck' ? 'truck' : 'car';
