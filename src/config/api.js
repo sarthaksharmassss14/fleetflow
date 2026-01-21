@@ -1,5 +1,5 @@
 // API Configuration
-// Use relative path '/api' in production to work with Nginx proxy
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Always use relative path /api in production deployment
+const API_BASE_URL = window.location.origin + '/api';
 
 export default API_BASE_URL;
