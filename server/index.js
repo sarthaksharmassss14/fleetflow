@@ -27,7 +27,9 @@ import socketService from "./services/socket.service.js";
 // Background workers now started per process or on primary (see below)
 
 const app = express();
+app.set('trust proxy', 1); // Enable trust proxy for Nginx
 const server = http.createServer(app);
+
 const PORT = process.env.PORT || 5000;
 
 // Initialize Socket.io

@@ -184,7 +184,11 @@ router.get(
         return res.redirect("/login?error=auth_failed");
       }
 
-      const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+      // Use CLIENT_URL from env, or fallback to the request's origin
+      const clientUrl = process.env.CLIENT_URL || `${req.protocol}://${req.get('host')}`;
+      console.log(`[OAuth] Redirecting to clientUrl: ${clientUrl} (Protocol: ${req.protocol}, Host: ${req.get('host')})`);
+
+
 
       // If this is a new user, redirect to signup page to choose role
       if (req.user.isNewUser) {
