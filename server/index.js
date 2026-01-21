@@ -89,7 +89,7 @@ if (cluster.isPrimary && isProduction) {
       socketTimeoutMS: 45000,
     })
     .then(() => {
-      // console.log(`✅ Worker ${process.pid} connected to MongoDB`);
+      console.log(`✅ Worker ${process.pid} connected to MongoDB`);
     })
     .catch((error) => {
       console.error("❌ MongoDB connection error:", error);
