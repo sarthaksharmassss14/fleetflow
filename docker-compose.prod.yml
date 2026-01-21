@@ -20,6 +20,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        - VITE_TOMTOM_API_KEY=${VITE_TOMTOM_API_KEY}
+        - VITE_OPENWEATHER_API_KEY=${VITE_WEATHER_API_KEY}
+        - VITE_API_URL=${VITE_API_URL}
     container_name: fleetflow-frontend
     restart: unless-stopped
     ports:
