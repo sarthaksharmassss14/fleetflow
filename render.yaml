@@ -1,0 +1,53 @@
+# ============================================
+# RENDER.COM DEPLOYMENT CONFIGURATION
+# ============================================
+# This file tells Render how to build and run your app
+
+services:
+  # Backend Web Service
+  - type: web
+    name: fleetflow-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore  # Change to your preferred region
+    plan: free  # Free tier
+    branch: main  # Deploy from main branch
+    
+    # Health check endpoint
+    healthCheckPath: /api/health
+    
+    # Environment variables (set these in Render dashboard)
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false  # Set manually in dashboard
+      - key: JWT_SECRET
+        generateValue: true  # Auto-generate secure secret
+      - key: AI_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: TOMTOM_API_KEY
+        sync: false
+      - key: WEATHER_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        value: https://fleetflow.vercel.app
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://fleetflow.vercel.app
+    
+    # Auto-deploy on push
+    autoDeploy: true

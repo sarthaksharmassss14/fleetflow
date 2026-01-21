@@ -1,0 +1,306 @@
+/* ============================================
+   RESPONSIVE MEDIA QUERIES FOR DASHBOARD
+   ============================================ */
+
+/* Mobile First Approach */
+
+/* ============================================
+   MOBILE (< 640px)
+   ============================================ */
+@media (max-width: 639px) {
+  :root {
+    --sidebar-width: 100%;
+    --header-height: 60px;
+  }
+
+  /* Dashboard Layout */
+  .dashboard-container {
+    flex-direction: column;
+    padding-top: 60px !important;
+  }
+
+  /* Sidebar - Full width on mobile */
+  .sidebar {
+    position: fixed;
+    top: 60px;
+    left: -100%;
+    width: 85%;
+    max-width: 320px;
+    height: calc(100vh - 60px);
+    z-index: 999;
+    transition: left 0.3s ease;
+    overflow-y: auto;
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  /* Mobile Menu Toggle Button */
+  .mobile-sidebar-toggle {
+    display: block !important;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    background: var(--primary-gradient);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 56px;
+    height: 56px;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+  }
+
+  /* Main Content */
+  .main-content {
+    width: 100%;
+    margin-left: 0;
+    padding: 1rem;
+  }
+
+  /* Statistics Grid - 2 columns on mobile */
+  .admin-insights-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem !important;
+  }
+
+  .stat-card {
+    padding: 1rem !important;
+  }
+
+  .sc-val {
+    font-size: 1.5rem !important;
+  }
+
+  .sc-label {
+    font-size: 0.75rem !important;
+  }
+
+  /* Feature Cards - Stack vertically */
+  .feature-cards-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  /* Route List */
+  .route-item {
+    padding: 0.875rem !important;
+  }
+
+  .route-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 0.5rem;
+  }
+
+  .route-stats-summary {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* Map Container */
+  .map-container {
+    height: 300px !important;
+    margin: 1rem 0;
+  }
+
+  /* Modals */
+  .modal-content {
+    width: 95% !important;
+    max-width: none !important;
+    margin: 1rem !important;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* Form Inputs */
+  .form-row {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+  }
+
+  .form-group {
+    width: 100% !important;
+  }
+
+  /* Buttons */
+  .btn-group {
+    flex-direction: column !important;
+    width: 100%;
+  }
+
+  .btn-group button {
+    width: 100% !important;
+  }
+
+  /* Hide less important elements on mobile */
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  /* Table - Scroll horizontally */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 600px;
+  }
+
+  /* Compact stops list */
+  .compact-row {
+    padding: 0.75rem !important;
+    font-size: 0.875rem;
+  }
+
+  /* Header adjustments */
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .header-actions button {
+    width: 100%;
+  }
+}
+
+/* ============================================
+   TABLET (640px - 1024px)
+   ============================================ */
+@media (min-width: 640px) and (max-width: 1023px) {
+  :root {
+    --sidebar-width: 280px;
+  }
+
+  /* Statistics Grid - 3 columns on tablet */
+  .admin-insights-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 1rem !important;
+  }
+
+  /* Feature Cards - 2 columns */
+  .feature-cards-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Sidebar - Collapsible */
+  .sidebar {
+    width: var(--sidebar-width);
+  }
+
+  .main-content {
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+  }
+
+  /* Map Container */
+  .map-container {
+    height: 400px !important;
+  }
+
+  /* Modals */
+  .modal-content {
+    width: 90% !important;
+    max-width: 600px !important;
+  }
+}
+
+/* ============================================
+   LARGE TABLET / SMALL DESKTOP (1024px - 1280px)
+   ============================================ */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  /* Statistics Grid - 4 columns */
+  .admin-insights-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  /* Feature Cards - 3 columns */
+  .feature-cards-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .map-container {
+    height: 500px !important;
+  }
+}
+
+/* ============================================
+   DESKTOP (> 1280px)
+   ============================================ */
+@media (min-width: 1280px) {
+  /* Full layout - already optimized */
+  .admin-insights-grid {
+    grid-template-columns: repeat(5, 1fr) !important;
+  }
+
+  .map-container {
+    height: 600px !important;
+  }
+}
+
+/* ============================================
+   LANDSCAPE MOBILE
+   ============================================ */
+@media (max-height: 500px) and (orientation: landscape) {
+  .sidebar {
+    height: 100vh;
+  }
+
+  .modal-content {
+    max-height: 95vh;
+    overflow-y: auto;
+  }
+}
+
+/* ============================================
+   TOUCH DEVICE OPTIMIZATIONS
+   ============================================ */
+@media (hover: none) and (pointer: coarse) {
+  /* Larger touch targets */
+  button, .btn, .route-item {
+    min-height: 44px;
+  }
+
+  /* Prevent text selection on buttons */
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Smoother scrolling */
+  .sidebar, .main-content {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+  .sidebar,
+  .mobile-sidebar-toggle,
+  .header-actions,
+  button {
+    display: none !important;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .route-item {
+    page-break-inside: avoid;
+  }
+}

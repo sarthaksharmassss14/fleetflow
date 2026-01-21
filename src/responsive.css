@@ -1,0 +1,359 @@
+/* ============================================
+   RESPONSIVE UTILITIES & BREAKPOINTS
+   ============================================ */
+
+/* Breakpoints:
+   - Mobile: < 640px
+   - Tablet: 640px - 1024px
+   - Desktop: > 1024px
+*/
+
+:root {
+  --mobile-padding: 1rem;
+  --tablet-padding: 2rem;
+  --desktop-padding: 3rem;
+}
+
+/* ============================================
+   CONTAINER RESPONSIVE
+   ============================================ */
+.responsive-container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--mobile-padding);
+}
+
+@media (min-width: 640px) {
+  .responsive-container {
+    padding: 0 var(--tablet-padding);
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-container {
+    padding: 0 var(--desktop-padding);
+  }
+}
+
+/* ============================================
+   GRID RESPONSIVE
+   ============================================ */
+.responsive-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr; /* Mobile: 1 column */
+}
+
+@media (min-width: 640px) {
+  .responsive-grid {
+    grid-template-columns: repeat(2, 1fr); /* Tablet: 2 columns */
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-grid {
+    grid-template-columns: repeat(3, 1fr); /* Desktop: 3 columns */
+    gap: 2rem;
+  }
+}
+
+.responsive-grid-2 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .responsive-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+.responsive-grid-4 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .responsive-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ============================================
+   FLEX RESPONSIVE
+   ============================================ */
+.responsive-flex {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .responsive-flex {
+    flex-direction: row;
+    gap: 1.5rem;
+  }
+}
+
+/* ============================================
+   TEXT RESPONSIVE
+   ============================================ */
+.responsive-heading {
+  font-size: 1.5rem; /* Mobile */
+  line-height: 1.2;
+}
+
+@media (min-width: 640px) {
+  .responsive-heading {
+    font-size: 2rem; /* Tablet */
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-heading {
+    font-size: 2.5rem; /* Desktop */
+  }
+}
+
+.responsive-subheading {
+  font-size: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .responsive-subheading {
+    font-size: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-subheading {
+    font-size: 1.75rem;
+  }
+}
+
+.responsive-text {
+  font-size: 0.875rem;
+}
+
+@media (min-width: 640px) {
+  .responsive-text {
+    font-size: 1rem;
+  }
+}
+
+/* ============================================
+   SPACING RESPONSIVE
+   ============================================ */
+.responsive-padding {
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
+  .responsive-padding {
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-padding {
+    padding: 2rem;
+  }
+}
+
+.responsive-margin-top {
+  margin-top: 4rem; /* Mobile */
+}
+
+@media (min-width: 640px) {
+  .responsive-margin-top {
+    margin-top: 5rem; /* Tablet */
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-margin-top {
+    margin-top: 6rem; /* Desktop */
+  }
+}
+
+/* ============================================
+   HIDE/SHOW ON DEVICES
+   ============================================ */
+.hide-mobile {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .hide-mobile {
+    display: block;
+  }
+}
+
+.show-mobile {
+  display: block;
+}
+
+@media (min-width: 640px) {
+  .show-mobile {
+    display: none;
+  }
+}
+
+.hide-tablet {
+  display: block;
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .hide-tablet {
+    display: none;
+  }
+}
+
+/* ============================================
+   BUTTON RESPONSIVE
+   ============================================ */
+.responsive-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  width: 100%; /* Full width on mobile */
+}
+
+@media (min-width: 640px) {
+  .responsive-button {
+    width: auto; /* Auto width on tablet+ */
+    font-size: 1rem;
+    padding: 0.875rem 2rem;
+  }
+}
+
+/* ============================================
+   CARD RESPONSIVE
+   ============================================ */
+.responsive-card {
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+@media (min-width: 640px) {
+  .responsive-card {
+    padding: 1.5rem;
+    border-radius: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-card {
+    padding: 2rem;
+  }
+}
+
+/* ============================================
+   MODAL RESPONSIVE
+   ============================================ */
+.responsive-modal {
+  width: 95%;
+  max-width: 500px;
+  margin: 1rem;
+}
+
+@media (min-width: 640px) {
+  .responsive-modal {
+    width: 90%;
+    max-width: 600px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-modal {
+    width: 80%;
+    max-width: 700px;
+  }
+}
+
+/* ============================================
+   TABLE RESPONSIVE (Scroll on mobile)
+   ============================================ */
+.responsive-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.responsive-table {
+  min-width: 600px; /* Force scroll on mobile */
+}
+
+@media (min-width: 1024px) {
+  .responsive-table {
+    min-width: 100%;
+  }
+}
+
+/* ============================================
+   SIDEBAR RESPONSIVE
+   ============================================ */
+.responsive-sidebar {
+  position: fixed;
+  top: 0;
+  left: -100%; /* Hidden on mobile */
+  width: 80%;
+  max-width: 300px;
+  height: 100vh;
+  transition: left 0.3s ease;
+  z-index: 1000;
+}
+
+.responsive-sidebar.open {
+  left: 0;
+}
+
+@media (min-width: 1024px) {
+  .responsive-sidebar {
+    position: static;
+    width: 250px;
+    left: 0;
+  }
+}
+
+/* ============================================
+   TOUCH TARGETS (Minimum 44x44px for mobile)
+   ============================================ */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================
+   SAFE AREA (For notched devices)
+   ============================================ */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ============================================
+   SCROLLBAR RESPONSIVE
+   ============================================ */
+@media (max-width: 639px) {
+  /* Thinner scrollbar on mobile */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}

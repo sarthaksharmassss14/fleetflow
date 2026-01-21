@@ -31,14 +31,6 @@ const Hero = () => {
             </p>
             <div className="hero-cta">
               <button onClick={handleStartTrial} className="btn-primary btn-large">Start Free Trial</button>
-              <a 
-                href="https://www.youtube.com/results?search_query=fleet+management+demo" // Placeholder Demo Link
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="btn-outline btn-large"
-              >
-                Watch Demo
-              </a>
             </div>
             <div className="hero-stats">
               <div className="stat">

@@ -306,11 +306,13 @@
   display: flex;
   padding: 1.5rem;
   gap: 1.5rem;
+  align-items: stretch;
 }
 
 /* Sidebar Styling */
 .dashboard-sidebar {
   width: var(--sidebar-width);
+  flex-shrink: 0;
   height: calc(100vh - var(--header-height) - 3rem);
   background: var(--surface-color);
   border-radius: var(--border-radius);
@@ -319,7 +321,8 @@
   flex-direction: column;
   overflow: hidden;
   position: sticky;
-  top: calc(var(--header-height) + 1.5rem);
+  top: calc(var(--header-height) + 1.5rem); /* Perfectly aligns with card top gap */
+  margin-top: 0;
 }
 
 .sidebar-header {
@@ -441,11 +444,13 @@
 /* Main View Styling */
 .dashboard-main {
   flex: 1 1 auto;
+  min-width: 0;
   background: var(--surface-color);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow-premium);
   display: flex;
   flex-direction: column;
+  min-height: calc(100vh - var(--header-height) - 3rem);
 }
 
 .route-detail-view {
@@ -456,9 +461,13 @@
 }
 
 .map-view-wrapper {
-  min-height: 450px; /* Give map a solid dedicated space */
-  background: #f8f9fa;
+  height: 500px; /* Force solid height for Leaflet */
+  width: 100%;
+  background: #f1f5f9;
   position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  margin: 1.5rem 0;
   z-index: 10;
 }
 
@@ -491,21 +500,25 @@
 
 .action-bar {
   display: flex;
-  gap: 1.5rem; /* Increased gap from 1.25rem */
+  gap: 0.5rem;
   align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .btn-action {
-  padding: 0.6rem 1.2rem;
+  padding: 0.5rem 0.9rem; /* Slightly reduced padding to help fit in one line */
   border-radius: 8px;
-  font-size: 0.85rem;
+  font-size: 0.8rem; /* Slightly smaller font */
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   border: 1px solid transparent;
+  white-space: nowrap;
 }
 
 .btn-simulate {
@@ -539,9 +552,9 @@
   background-position: right 0.75rem center, center !important;
   background-repeat: no-repeat !important;
   background-size: 1rem, cover !important;
-  padding-right: 2.5rem !important;
+  padding-right: 2.25rem !important;
   cursor: pointer;
-  min-width: 180px;
+  min-width: 160px; /* Reduced min-width */
   text-align: left;
   font-weight: 700;
   border: none;
@@ -951,57 +964,70 @@ select.btn-export option {
 
 .stats-cards-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Squeezed to fit 5 */
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); /* Bigger cards */
+  gap: 1.5rem;
+  margin-top: 2rem;
 }
 
 .stat-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 16px;
-  border: 1px solid rgba(0,0,0,0.05);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  padding: 2.25rem; /* Significant padding increase */
+  border-radius: 24px; /* Very round goodness */
+  border: 1px solid rgba(255, 255, 255, 0.6);
   display: flex;
   align-items: center;
-  gap: 1.25rem;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.02);
-  transition: transform 0.2s;
+  gap: 1.5rem;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0,0,0,0.01);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 160px; /* Taller */
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 12px 20px rgba(0,0,0,0.05);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  background: white;
+  z-index: 10;
 }
 
 .stat-card.urgent {
-  border-left: 4px solid #ef4444;
+  border-left: 6px solid #ef4444;
+  background: linear-gradient(145deg, #fff1f2, #fff);
 }
 
 .sc-icon {
-  font-size: 1.75rem;
-  background: #f8f9fa;
-  width: 50px;
-  height: 50px;
+  font-size: 2.5rem;
+  background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+  width: 75px;
+  height: 75px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 20px;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.8), 0 4px 6px rgba(0,0,0,0.05);
 }
 
 .sc-info {
   display: flex;
   flex-direction: column;
+  justify-content: center;
 }
 
 .sc-label {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  font-weight: 500;
+  font-size: 0.95rem;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
 }
 
 .sc-val {
-  font-size: 1.5rem;
+  font-size: 2.75rem;
   font-weight: 800;
-  color: var(--text-main);
+  color: #0f172a;
+  line-height: 1;
+  letter-spacing: -0.03em;
 }
 
 .stat-card.urgent .sc-val {
@@ -1334,10 +1360,16 @@ select.btn-export option {
 .tag-optimize { background: #dcfce7; color: #166534; }
 .tag-traffic { background: #fee2e2; color: #b91c1c; }
 .tag-weather { background: #e0f2fe; color: #0369a1; }
+.tag-system { background: #fee2e2; color: #b91c1c; }
+.tag-global { background: #e0f2fe; color: #0369a1; }
+.tag-network { background: #dcfce7; color: #166534; }
 
 [data-theme='dark'] .tag-optimize { background: #064e3b; color: #6ee7b7; }
 [data-theme='dark'] .tag-traffic { background: #7f1d1d; color: #fecaca; }
 [data-theme='dark'] .tag-weather { background: #0c4a6e; color: #7dd3fc; }
+[data-theme='dark'] .tag-system { background: #450a0a; color: #fca5a5; }
+[data-theme='dark'] .tag-global { background: #082f49; color: #7dd3fc; }
+[data-theme='dark'] .tag-network { background: #064e3b; color: #86efac; }
 
 /* Autocomplete Dropdown */
 .autocomplete-dropdown {
@@ -1395,4 +1427,43 @@ select.btn-export option {
   background: #334155;
   filter: brightness(1.2);
   color: #60a5fa;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+[data-theme='dark'] .route-detail-view {
+  background: #1a1a1a;
+}
+
+/* DARK MODE STAT CARD FIXES */
+[data-theme='dark'] .stat-card {
+  background: rgba(30, 41, 59, 0.7); /* Darker, semi-transparent bg */
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] .stat-card:hover {
+  background: rgba(30, 41, 59, 1);
+  box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='dark'] .sc-val {
+  color: #f8fafc; /* BRIGHT WHITE TEXT for visibility */
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+[data-theme='dark'] .sc-label {
+  color: #94a3b8; /* Lighter grey for labels */
+}
+
+/* Urgent Card in Dark Mode */
+[data-theme='dark'] .stat-card.urgent {
+  background: linear-gradient(145deg, #450a0a, #1a1a1a);
+  border-left-color: #ef4444;
+}
+
+[data-theme='dark'] .stat-card.urgent .sc-val {
+  color: #fca5a5; /* Light Red for urgent numbers */
 }

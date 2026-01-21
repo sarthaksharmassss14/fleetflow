@@ -6,14 +6,27 @@ import rateLimit from 'express-rate-limit';
  * We apply this to routes that trigger AI generations
  */
 export const aiRateLimiter = rateLimit({
-	windowMs: 24 * 60 * 60 * 1000, // 24 hours
-	max: 1000, // Limit each IP to 1000 requests per windowMs
+	windowMs: 60 * 1000, // 1 minute window (Groq limit is RPM)
+	max: 30, // Limit each IP to 30 requests per minute
 	message: {
 		status: 429,
-		message: "⚠️ AI Daily Quota Exceeded. Gemini AI is limited to 1000 optimizations per day. Please try again tomorrow or contact admin."
+		message: "⚠️ AI Rate Limit Exceeded. You are making requests too fast (Max 30/min). Please wait a moment."
 	},
-	standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-	legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+	standardHeaders: true,
+	legacyHeaders: false,
+    keyGenerator: (req) => {
+        // Apply limit globally or per-IP. Since Groq limit is per API Key (Global), ideally we should limit globally.
+        // For now, limiting per IP is a safe client-side guard.
+        return req.ip; 
+    },
+    skipFailedRequests: true // Don't count failed requests against the quota
+});
+
+// Secondary Daily Quota Limiter (Optional but good practice)
+export const aiDailyLimiter = rateLimit({
+    windowMs: 24 * 60 * 60 * 1000, // 24 hours
+    max: 14400, // Groq Allow 14,400 RPD. Setting buffer.
+    message: { status: 429, message: "⚠️ Daily AI Quota Exceeded (14,000/day)." }
 });
 
 /**
@@ -22,7 +35,7 @@ export const aiRateLimiter = rateLimit({
  */
 export const apiRateLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutes
-	max: 100, // Limit each IP to 100 requests per windowMs
+	max: 2000, // Limit each IP to 2000 requests per windowMs (relaxed for dev/polling)
 	message: {
 		status: 429,
 		message: "Too many requests from this IP, please try again after 15 minutes."

@@ -99,6 +99,30 @@ const routePlanSchema = new mongoose.Schema(
         default: 25,
       },
     },
+    startedAt: {
+      type: Date,
+      default: null,
+    },
+    lastDepartedAt: {
+      type: Date,
+      default: null,
+    },
+    activeLeg: {
+      type: Number,
+      default: 0,
+    },
+    isStationary: {
+      type: Boolean,
+      default: true,
+    },
+    generatedBy: {
+      type: String, // 'groq', 'gemini', 'fallback'
+      default: 'fallback'
+    },
+    optimizationModel: {
+      type: String,
+      default: null
+    }
   },
   {
     timestamps: true,

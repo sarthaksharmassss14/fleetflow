@@ -16,7 +16,8 @@ export const exportToPDF = (route) => {
     const doc = new jsPDF();
     const routeId = route._id ? route._id.toString().slice(-6).toUpperCase() : "UNKNOWN";
     const status = route.status ? route.status.toUpperCase() : "PENDING";
-    const stops = Array.isArray(route.route) ? route.route : [];
+    // Valid stops sorted by sequence order
+    const stops = Array.isArray(route.route) ? [...route.route].sort((a,b) => (a.order || 0) - (b.order || 0)) : [];
     const source = stops.length > 0 ? (stops[0].address || "N/A") : "N/A";
     const destination = stops.length > 1 ? (stops[stops.length-1].address || "N/A") : (stops.length === 1 ? (stops[0].address || "N/A") : "N/A");
 
@@ -171,7 +172,8 @@ export const exportToPDF = (route) => {
 export const exportToCSV = (route) => {
   try {
     const routeId = route?._id ? route._id.toString().slice(-6).toUpperCase() : "UNKNOWN";
-    const stops = Array.isArray(route?.route) ? route.route : [];
+    // Valid stops sorted by sequence order
+    const stops = Array.isArray(route?.route) ? [...route.route].sort((a,b) => (a.order || 0) - (b.order || 0)) : [];
     
     // Metadata / Summary Rows
     const summary = [
@@ -235,8 +237,9 @@ export const exportToiCal = (route) => {
   try {
     const routeId = route?._id ? route._id.toString().slice(-6).toUpperCase() : "UNKNOWN";
     let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//FleetFlow//Route Schedule//EN\n";
-
-    const stops = Array.isArray(route?.route) ? route.route : [];
+    
+    // Valid stops sorted by sequence order
+    const stops = Array.isArray(route?.route) ? [...route.route].sort((a,b) => (a.order || 0) - (b.order || 0)) : [];
     const baseDate = route.createdAt ? new Date(route.createdAt) : new Date();
 
     stops.forEach((stop, index) => {

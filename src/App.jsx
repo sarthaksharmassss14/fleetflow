@@ -18,6 +18,9 @@ import Footer from "./components/Footer";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
+import Fleet from "./pages/Fleet";
+import Finance from "./pages/Finance";
+import Warehouse from "./pages/Warehouse";
 import AuthSuccess from "./pages/AuthSuccess";
 import Pricing from "./pages/Pricing";
 import { 
@@ -25,6 +28,7 @@ import {
   PrivacyPolicy, TermsOfService, GDPRCompliance, Security 
 } from "./pages/StaticPages";
 import "./App.css";
+import "./responsive.css"; // Responsive utilities
 
 // Landing Page Component
 const Home = () => {
@@ -85,6 +89,30 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/fleet"
+              element={
+                <ProtectedRoute>
+                  <Fleet />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/finance"
+              element={
+                <ProtectedRoute>
+                  <Finance />
+                </ProtectedRoute>
+              }
+            />
+             <Route
+              path="/warehouse"
+              element={
+                <ProtectedRoute>
+                  <Warehouse />
                 </ProtectedRoute>
               }
             />

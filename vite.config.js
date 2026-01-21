@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: true,
-    open: true
+    open: true,
+    host: true // Allow access from network (for mobile testing)
   },
   optimizeDeps: {
     include: ['leaflet', 'react-leaflet']

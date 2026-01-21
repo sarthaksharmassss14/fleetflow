@@ -8,6 +8,7 @@ import { exportToPDF, exportToCSV, exportToiCal } from '../utils/exportUtils';
 import ProfileModal from '../components/ProfileModal';
 import NotificationCenter from '../components/NotificationCenter';
 import './Dashboard.css';
+import './Dashboard.responsive.css';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -39,10 +40,17 @@ const Dashboard = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]); // Store fetched vehicles
   const [assigning, setAssigning] = useState(false);
   const [lastRouteCount, setLastRouteCount] = useState(0);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [weather, setWeather] = useState(null);
+  const [showViolation, setShowViolation] = useState(true);
+
+  // Reset violation alert when switching routes
+  useEffect(() => {
+    setShowViolation(true);
+  }, [selectedRoute?._id]);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [weatherTarget, setWeatherTarget] = useState('destination'); // 'source', 'destination', or 'truck'
   const [truckCoords, setTruckCoords] = useState(null);
@@ -71,7 +79,9 @@ const Dashboard = () => {
     // Debounce
     searchTimeoutRef.current = setTimeout(async () => {
       try {
+        console.log(`Fetching suggestions for: ${query}`);
         const resp = await apiService.searchLocation(query);
+        console.log("Suggestions response:", resp);
         if (resp.success) {
            setSuggestions(prev => ({ ...prev, [index]: resp.data }));
         }
@@ -109,11 +119,30 @@ const Dashboard = () => {
     fetchRoutes();
     if (user?.role === 'dispatcher') {
       fetchDrivers();
+      fetchVehicles(); // Fetch vehicles for dispatchers
+    }
+    if (user?.role === 'admin') {
+      fetchVehicles(); // Admin also sees full fleet
     }
     if (user?.role === 'admin' || user?.role === 'dispatcher') {
       fetchFleetAnalysis();
     }
   }, [user?.role]);
+
+  const fetchVehicles = async () => {
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/vehicles`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            setVehicles(data.data);
+        }
+    } catch (error) {
+        console.error("Error fetching vehicles:", error);
+    }
+  };
 
   // Polling Effect (Real-time updates)
   useEffect(() => {
@@ -124,7 +153,7 @@ const Dashboard = () => {
         if (user?.role === 'admin' || user?.role === 'dispatcher') {
           fetchFleetAnalysis();
         }
-      }, 30000); // 30 seconds for dynamic intelligence
+      }, 10000); // 10 seconds for tighter sync between dispatcher and driver
     }
     return () => clearInterval(interval);
   }, [user, selectedRoute, routes]); // Re-run effect to keep pollRoutes specific context fresh
@@ -144,6 +173,10 @@ const Dashboard = () => {
     }
     return () => clearInterval(trafficInterval);
   }, [user?.role, selectedRoute]); // Depends on selectedRoute state
+
+  useEffect(() => {
+    setShowViolation(true);
+  }, [selectedRoute?._id]);
 
 
   useEffect(() => {
@@ -267,8 +300,13 @@ const Dashboard = () => {
                 // CRITICAL: Detect if AI re-ordered the stops or updated the path
                 const routeChanged = fresh.route?.length !== currentSelected.route?.length || 
                                      JSON.stringify(fresh.route) !== JSON.stringify(currentSelected.route);
+                
+                // CRITICAL: Detect Movement Updates (Depart/Arrive)
+                const movementChanged = fresh.activeLeg !== currentSelected.activeLeg ||
+                                        fresh.isStationary !== currentSelected.isStationary ||
+                                        fresh.lastDepartedAt !== currentSelected.lastDepartedAt;
 
-                if (statusChanged || driverChanged || routeChanged) {
+                if (statusChanged || driverChanged || routeChanged || movementChanged) {
                     console.log(`Polling: updating selected route details [Status: ${statusChanged}, Driver: ${driverChanged}, Route: ${routeChanged}]`);
                     setSelectedRoute(fresh);
                 }
@@ -737,7 +775,7 @@ const Dashboard = () => {
                   borderRadius: '12px' 
                 }}>
                   <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Vehicle Type
+                    Select Vehicle from Fleet
                   </label>
                   <select
                     style={{ 
@@ -752,46 +790,40 @@ const Dashboard = () => {
                       outline: 'none',
                       cursor: 'pointer'
                     }}
-                    value={isEditing ? (editData.vehicleData?.type || 'van') : (formData.vehicleData?.type || 'van')}
+                    value={
+                        // Try to find if current data matches a known vehicle, or default to ''
+                        '' // Ideally bind to an ID, but for now we drive data FROM this select
+                    }
                     onChange={(e) => {
-                      const type = e.target.value;
-                      if (isEditing) {
-                        setEditData({ ...editData, vehicleData: { ...editData.vehicleData, type } });
-                      } else {
-                        setFormData({ ...formData, vehicleData: { ...formData.vehicleData, type } });
+                      const vId = e.target.value;
+                      const v = vehicles.find(veh => veh._id === vId);
+                      if (v) {
+                          const update = {
+                              type: v.type.toLowerCase(), // Ensure lowercase as backend might trigger heuristics
+                              capacity: parseInt(v.capacity) || 1000
+                          };
+                          
+                          if (isEditing) {
+                            setEditData({ ...editData, vehicleData: update });
+                          } else {
+                            setFormData({ ...formData, vehicleData: update });
+                          }
                       }
                     }}
                   >
-                    <option value="van">Van / LCV (Expressways & Fast)</option>
-                    <option value="truck">Heavy Truck (Restricted Roads)</option>
+                    <option value="">-- Select a Vehicle --</option>
+                    {vehicles.length > 0 ? vehicles.map(v => (
+                        <option key={v._id} value={v._id}>
+                             {v.name} | {v.type} | {v.reg}
+                        </option>
+                    )) : <option disabled>No vehicles in registry</option>}
+                    <option disabled>──────────</option>
+                    <option disabled>Manual Entry Below</option>
                   </select>
 
-                  <label style={{ display: 'block', marginTop: '1rem', marginBottom: '0.75rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Vehicle Capacity (kg)
-                  </label>
-                  <input
-                    type="number"
-                    style={{ 
-                      width: '100%', 
-                      padding: '10px', 
-                      borderRadius: '8px', 
-                      border: '1px solid var(--border-color)',
-                      background: 'var(--bg-white)',
-                      color: 'var(--text-main)',
-                      fontWeight: 600,
-                      fontSize: '0.9rem',
-                      outline: 'none'
-                    }}
-                    value={isEditing ? (editData.vehicleData?.capacity || 1000) : (formData.vehicleData?.capacity || 1000)}
-                    onChange={(e) => {
-                      const capacity = parseInt(e.target.value);
-                      if (isEditing) {
-                        setEditData({ ...editData, vehicleData: { ...editData.vehicleData, capacity } });
-                      } else {
-                        setFormData({ ...formData, vehicleData: { ...formData.vehicleData, capacity } });
-                      }
-                    }}
-                  />
+                  <div style={{marginTop: '15px', color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic'}}>
+                      Selected: <strong style={{color: 'var(--text-main)'}}>{isEditing ? (editData.vehicleData?.type || 'N/A') : (formData.vehicleData?.type || 'N/A')}</strong> with capacity <strong style={{color: 'var(--text-main)'}}>{isEditing ? (editData.vehicleData?.capacity || 'N/A') : (formData.vehicleData?.capacity || 'N/A')} kg</strong>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '15px' }}>
@@ -816,15 +848,17 @@ const Dashboard = () => {
                     <span className="route-id">#{r._id.slice(-6).toUpperCase()}</span>
                       {user?.role === 'dispatcher' && (
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <button 
-                             title="Edit Stops" 
-                             onClick={(e) => { e.stopPropagation(); startEdit(r); }}
-                             style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.2rem', padding:'4px', opacity:0.6, transition:'opacity 0.2s'}}
-                             onMouseOver={(e) => e.target.style.opacity = 1}
-                             onMouseOut={(e) => e.target.style.opacity = 0.6}
-                          >
-                            ✏️
-                          </button>
+                          {r.status === 'draft' && (
+                            <button 
+                               title="Edit Stops" 
+                               onClick={(e) => { e.stopPropagation(); startEdit(r); }}
+                               style={{background:'none', border:'none', cursor:'pointer', fontSize:'1.2rem', padding:'4px', opacity:0.6, transition:'opacity 0.2s'}}
+                               onMouseOver={(e) => e.target.style.opacity = 1}
+                               onMouseOut={(e) => e.target.style.opacity = 0.6}
+                            >
+                              ✏️
+                            </button>
+                          )}
                           <button 
                              title="Delete Route" 
                              onClick={(e) => handleDeleteRoute(r._id, e)}
@@ -846,21 +880,22 @@ const Dashboard = () => {
                 </div>
               ))
             }
-            {!loading && routes.length === 0 && (
+            {!loading && routes.length === 0 && user?.role === 'dispatcher' && (
               <div className="empty-sidebar-state">
                 <p>No routes found.</p>
                 <p className="hint">Click "+ New Route" to get started.</p>
               </div>
             )}
-            {user?.role === 'driver' && routes.length === 0 && (
+            {!loading && routes.length === 0 && user?.role === 'driver' && (
               <div className="empty-sidebar-state">
-                <p>No routes found.</p>
-                <p className="hint">Waiting for assignments from dispatcher.</p>
+                <p>No routes assigned.</p>
+                <p className="hint">Waiting for dispatcher to assign routes.</p>
               </div>
             )}
-             {user?.role === 'admin' && routes.length === 0 && (
+            {!loading && routes.length === 0 && user?.role === 'admin' && (
               <div className="empty-sidebar-state">
                 <p>No system routes yet.</p>
+                <p className="hint">Dispatchers will create routes.</p>
               </div>
             )}
           </div>
@@ -898,9 +933,10 @@ const Dashboard = () => {
                       ← Back to Dashboard
                     </button>
                   )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                       <h3 style={{ margin: 0 }}>Route #{selectedRoute._id.slice(-6).toUpperCase()}</h3>
+                      {/* Removed Edit Plan button */}
                       <div className="status-badge" style={{ 
                         padding: '4px 10px', 
                         borderRadius: '20px', 
@@ -911,26 +947,72 @@ const Dashboard = () => {
                       }}>
                         {selectedRoute.status?.toUpperCase()}
                       </div>
+                      {/* Removed AI Optimization badge */}
                     </div>
-                    {selectedRoute.constraintsAlert && selectedRoute.constraintsAlert !== 'null' && (
+                    {selectedRoute.constraintsAlert && selectedRoute.constraintsAlert !== 'null' && showViolation && (user?.role === 'dispatcher' || user?.role === 'admin') && selectedRoute.status === 'draft' && (
                       <div style={{ 
-                        background: 'linear-gradient(90deg, #fff7ed 0%, #ffedd5 100%)', 
-                        color: '#c2410c', 
-                        padding: '10px 16px', 
-                        borderRadius: '10px', 
-                        fontSize: '0.85rem', 
-                        fontWeight: 700, 
-                        border: '1px solid #fed7aa',
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100vw',
+                        height: '100vh',
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        backdropFilter: 'blur(4px)',
+                        zIndex: 10000,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '10px',
-                        boxShadow: '0 2px 8px rgba(251, 146, 60, 0.1)',
-                        animation: 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both'
+                        justifyContent: 'center'
                       }}>
-                        <span style={{ fontSize: '1.2rem' }}>⚠️</span>
-                        <div>
-                          <div style={{ textTransform: 'uppercase', fontSize: '0.7rem', opacity: 0.8 }}>Logistics Violation Detected</div>
-                          <div style={{ fontWeight: 600 }}>{selectedRoute.constraintsAlert}</div>
+                        <div style={{ 
+                          background: 'rgba(255, 255, 255, 0.98)', 
+                          color: '#c2410c', 
+                          padding: '30px', 
+                          borderRadius: '24px', 
+                          fontSize: '1rem', 
+                          fontWeight: 600, 
+                          border: '2px solid #fed7aa',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '20px',
+                          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                          animation: 'popIn 0.4s cubic-bezier(.17,.89,.32,1.27) both',
+                          maxWidth: '850px',
+                          width: '90%',
+                          lineHeight: '1.7',
+                          position: 'relative',
+                        }}>
+                          <span style={{ fontSize: '2.5rem', marginTop: '-5px' }}>🛑</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ textTransform: 'uppercase', fontSize: '0.8rem', fontWeight: 800, opacity: 0.8, marginBottom: '8px', letterSpacing: '0.15em', color: '#ea580c' }}>Logistics Constraint Violation</div>
+                            <div style={{ color: '#9a3412', fontSize: '1.1rem', fontWeight: 700 }}>{selectedRoute.constraintsAlert}</div>
+                            <div style={{ marginTop: '20px', fontSize: '0.9rem', fontStyle: 'italic', opacity: 0.7, color: '#c2410c', borderTop: '1px solid #ffedd5', paddingTop: '15px' }}>
+                              Manual intervention required. Please adjust time windows or reassign vehicles to resolve this conflict.
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setShowViolation(false)}
+                            style={{
+                              background: '#ffedd5',
+                              border: 'none',
+                              borderRadius: '12px',
+                              width: '40px',
+                              height: '40px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '1.5rem',
+                              color: '#9a3412',
+                              transition: 'all 0.2s',
+                              position: 'absolute',
+                              top: '20px',
+                              right: '20px'
+                            }}
+                            onMouseOver={(e) => e.target.style.background = '#fed7aa'}
+                            onMouseOut={(e) => e.target.style.background = '#ffedd5'}
+                          >
+                            ✕
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1350,10 +1432,86 @@ const Dashboard = () => {
               {user?.role === 'admin' ? (
                 <div className="admin-insights-grid">
                   <header className="insights-header">
-                    <h2>Fleet Operations Overview</h2>
+                    <h2>Fleet Operations Overview 📊</h2>
                     <p>Real-time system health and logistics metrics.</p>
                   </header>
-                  <div className="stats-cards-row">
+                  <div className="stats-cards-row" style={{ marginTop: '1.5rem' }}>
+                    
+                    {/* Feature Cards Grid - Warehouse (Full) + Finance & Fleet (Half) */}
+                    <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '10px' }}>
+                        
+
+
+
+                        <div className="stat-card" 
+                             style={{ 
+                                 background: 'linear-gradient(145deg, #1e293b, #0f172a)', 
+                                 borderLeft: '4px solid #3b82f6',
+                                 cursor: 'pointer',
+                                 position: 'relative',
+                                 overflow: 'hidden',
+                                 minHeight: '140px'
+                             }}
+                             onClick={() => navigate('/warehouse')}
+                        >
+                            <span className="sc-icon" style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', boxShadow: 'none' }}>🏭</span>
+                            <div className="sc-info">
+                                <span className="sc-label" style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>WAREHOUSE</span>
+                                <span className="sc-val" style={{ color: '#f8fafc', fontSize: '1.5rem' }}>Inventory</span>
+                                <span style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                    Pending Orders & Routing
+                                </span>
+                            </div>
+                            <div style={{ position: 'absolute', right: '15px', bottom: '15px', fontSize: '1.2rem', color: '#3b82f6', opacity: 0.8 }}>➜</div>
+                        </div>
+
+                        {/* 2. My Fleet (Vehicle Registry) */}
+                        <div className="stat-card" 
+                             style={{ 
+                                 background: 'linear-gradient(145deg, #1e293b, #0f172a)', 
+                                 borderLeft: '4px solid #f97316',
+                                 cursor: 'pointer',
+                                 position: 'relative',
+                                 overflow: 'hidden',
+                                 minHeight: '140px'
+                             }}
+                             onClick={() => navigate('/fleet')}
+                        >
+                            <span className="sc-icon" style={{ background: 'rgba(249, 115, 22, 0.2)', color: '#fb923c', boxShadow: 'none' }}>🚛</span>
+                            <div className="sc-info">
+                                <span className="sc-label" style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>FLEET</span>
+                                <span className="sc-val" style={{ color: '#f8fafc', fontSize: '1.5rem' }}>Vehicles</span>
+                                <span style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                    Manage Trucks & Vans
+                                </span>
+                            </div>
+                            <div style={{ position: 'absolute', right: '15px', bottom: '15px', fontSize: '1.2rem', color: '#f97316', opacity: 0.8 }}>➜</div>
+                        </div>
+
+                         {/* 3. Financial Reports */}
+                         <div className="stat-card" 
+                             style={{ 
+                                 background: 'linear-gradient(145deg, #1e293b, #0f172a)', 
+                                 borderLeft: '4px solid #10b981',
+                                 cursor: 'pointer',
+                                 position: 'relative',
+                                 overflow: 'hidden',
+                                 minHeight: '140px'
+                             }}
+                             onClick={() => navigate('/finance')}
+                        >
+                            <span className="sc-icon" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', boxShadow: 'none' }}>💰</span>
+                            <div className="sc-info">
+                                <span className="sc-label" style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>FINANCE</span>
+                                <span className="sc-val" style={{ color: '#f8fafc', fontSize: '1.5rem' }}>Analytics</span>
+                                <span style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                    Fuel Costs & Wages
+                                </span>
+                            </div>
+                            <div style={{ position: 'absolute', right: '15px', bottom: '15px', fontSize: '1.2rem', color: '#10b981', opacity: 0.8 }}>➜</div>
+                        </div>
+
+                    </div>
                     <div className="stat-card">
                       <span className="sc-icon">📦</span>
                       <div className="sc-info">
@@ -1382,7 +1540,7 @@ const Dashboard = () => {
                         <span className="sc-val">{routes.filter(r => r.estimatedTime > 120 && r.status === 'active').length}</span>
                       </div>
                     </div>
-                      <div className="stat-card">
+                    <div className="stat-card">
                       <span className="sc-icon">👤</span>
                       <div className="sc-info">
                         <span className="sc-label">Active Drivers</span>
@@ -1390,58 +1548,39 @@ const Dashboard = () => {
                       </div>
                     </div>
                     
-                  </div>
-                  <div className="intel-card" style={{ width: '100%', maxWidth: '800px', textAlign: 'left', margin: '30px auto' }}>
-                    <div className="intel-header">
-                       <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b', fontWeight: 700 }}>FLEET-WIDE INTELLIGENCE</h4>
-                       <div style={{ display: 'flex', alignItems: 'center' }}>
-                           <span className="live-dot"></span>
-                           <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444' }}>MONITORING ACTIVE</span>
-                       </div>
-                    </div>
-                    <div className="intel-list">
-                      {fetchingAnalysis && !fleetAnalysis ? (
-                         <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>Generating AI Insights...</div>
-                      ) : fleetAnalysis && fleetAnalysis.insights ? (
-                        fleetAnalysis.insights.map((insight, idx) => (
-                           <div className="intel-item" key={idx}>
-                               <div className="intel-time">{insight.time}</div>
-                               <div className="intel-content">
-                                   <span className={`intel-tag tag-${insight.type || 'optimize'}`}>{(insight.type || 'SYSTEM').toUpperCase()}</span>
-                                   {insight.text}
-                               </div>
-                           </div>
-                        ))
-                      ) : (
-                        <>
-                           <div className="intel-item">
-                               <div className="intel-time">Just now</div>
-                               <div className="intel-content">
-                                   <span className="intel-tag tag-optimize">SYSTEM</span>
-                                   Fleet data synchronized. AI monitoring active across <strong>{routes.filter(r => r.status === 'active').length}</strong> active vehicles.
-                               </div>
-                           </div>
-                           <div className="intel-item">
-                               <div className="intel-time">1m ago</div>
-                               <div className="intel-content">
-                                   <span className="intel-tag tag-weather">GLOBAL</span>
-                                   Real-time weather data verified. No major disruptions detected in current route corridors.
-                               </div>
-                           </div>
-                        </>
-                      )}
+                    <div className="stat-card">
+                      <span className="sc-icon">👨‍💼</span>
+                      <div className="sc-info">
+                        <span className="sc-label">Active Dispatchers</span>
+                        <span className="sc-val">{new Set(routes.filter(r => r.userId).map(r => r.userId._id || r.userId)).size}</span>
+                      </div>
                     </div>
                   </div>
-
-
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: '3rem' }}>{user?.role === 'driver' ? '🚛' : '📦'}</div>
-                  <h3>Welcome to FleetFlow Dashboard</h3>
-                  <p>{user?.role === 'driver' 
-                    ? "Your assigned routes will appear here. Currently, there are no active assignments for you." 
-                    : "Select a route from the sidebar to view full live tracking and optimization details."}
+                  <div style={{ fontSize: '4.5rem', marginBottom: '15px' }}>{user?.role === 'driver' ? '🚛' : '📦'}</div>
+                  <h1 style={{ 
+                    fontSize: '3rem', 
+                    fontWeight: 800, 
+                    marginBottom: '15px',
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #94a3b8 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    letterSpacing: '-0.02em'
+                  }}>
+                    Welcome to FleetFlow Dashboard
+                  </h1>
+                  <p style={{ 
+                    fontSize: '1.2rem', 
+                    color: '#94a3b8', 
+                    maxWidth: '600px', 
+                    margin: '0 auto 30px auto',
+                    lineHeight: '1.6'
+                  }}>
+                    {user?.role === 'driver' 
+                      ? "Your assigned routes will appear here. Currently, there are no active assignments for you." 
+                      : "Select a route from the sidebar to view full live tracking and optimization details."}
                   </p>
                   {!loading && routes.length === 0 && user?.role === 'dispatcher' && (
                     <button className="btn-create-route" style={{ width: 'auto', padding: '0.75rem 2rem' }} onClick={() => setShowCreateForm(true)}>

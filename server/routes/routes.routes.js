@@ -5,7 +5,7 @@ import geminiService from "../services/gemini.service.js";
 import externalService from "../services/external.service.js";
 import socketService from "../services/socket.service.js";
 import { authenticate, authorize } from "../middleware/auth.middleware.js";
-import { aiRateLimiter, apiRateLimiter } from "../middleware/rateLimiter.js";
+import { aiRateLimiter, apiRateLimiter, aiDailyLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
@@ -52,7 +52,7 @@ router.get("/ai-health", async (req, res) => {
 
 
 // Generate optimized route
-router.post("/optimize", aiRateLimiter, async (req, res) => {
+router.post("/optimize", aiRateLimiter, aiDailyLimiter, async (req, res) => {
   try {
     const { deliveries, vehicleData, constraints } = req.body;
     console.log("Optimize Request Body:", JSON.stringify(req.body, null, 2));
@@ -83,7 +83,8 @@ router.post("/optimize", aiRateLimiter, async (req, res) => {
       vehicleData: vehicleData || {},
       reasoning: optimizedRoute.reasoning,
       constraintsAlert: optimizedRoute.constraintsAlert || null,
-      vehicleData: vehicleData || {},
+      generatedBy: optimizedRoute.generatedBy || 'fallback',
+      optimizationModel: optimizedRoute.optimizationModel || 'internal-v1',
       status: "draft",
     });
 
@@ -110,18 +111,21 @@ router.get("/", async (req, res) => {
     const { status, driverId } = req.query;
     let query = {};
 
+    // Route filtering based on user role (Data Isolation)
     // Route filtering based on user role
-    if (req.user.role === "admin" || req.user.role === "dispatcher") {
-       // Admins and Dispatchers see all ACTIVE routes (filter out archived)
-       query.isArchived = { $ne: true };
+    if (req.user.role === "admin") {
+       // Super Admin View: See EVERYTHING (except archived)
+       // This allows Admins to oversee all Dispatchers
     } else if (req.user.role === "driver") {
-       // Drivers see routes assigned to them that are not archived
+       // Drivers see routes assigned to them
        query.driverId = req.user._id;
-       query.isArchived = { $ne: true };
     } else {
+       // Dispatchers see ONLY routes they created (SaaS Mode Isolation)
+       // Dispatcher A cannot see Dispatcher B's routes
        query.userId = req.user._id;
-       query.isArchived = { $ne: true };
     }
+    // Base filter: Never show archived routes in main list
+    query.isArchived = { $ne: true };
 
     if (status) query.status = status;
     if (driverId) query.driverId = driverId;
@@ -204,7 +208,7 @@ router.get("/:id", async (req, res) => {
 // Update route (assign driver, change status)
 router.patch("/:id", async (req, res) => {
   try {
-    const { driverId, status } = req.body;
+    const { driverId, status, startedAt, lastDepartedAt, activeLeg, isStationary } = req.body;
     const route = await RoutePlan.findById(req.params.id);
 
     if (!route) {
@@ -216,6 +220,10 @@ router.patch("/:id", async (req, res) => {
 
     if (driverId !== undefined) route.driverId = driverId;
     if (status) route.status = status;
+    if (startedAt !== undefined) route.startedAt = startedAt;
+    if (lastDepartedAt !== undefined) route.lastDepartedAt = lastDepartedAt;
+    if (activeLeg !== undefined) route.activeLeg = activeLeg;
+    if (isStationary !== undefined) route.isStationary = isStationary;
 
     await route.save();
     

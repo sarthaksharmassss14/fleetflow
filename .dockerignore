@@ -1,0 +1,70 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files (use environment variables instead)
+.env
+.env.local
+.env.production
+.env.vercel
+.env.example
+
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+coverage/
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Scripts
+*.sh
+docker-compose*.yml
+
+# Database dumps
+*.sql
+*.dump
+
+# Debug scripts
+debug_*.js
+test_*.js
+check_*.js
+fix_*.js
+add_*.js
+create_*.js

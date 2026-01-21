@@ -16,14 +16,15 @@ import authRoutes from "./routes/auth.routes.js";
 import routeRoutes from "./routes/routes.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
+import deliveryRoutes from "./routes/deliveries.routes.js";
+import vehicleRoutes from "./routes/vehicles.routes.js";
 import workerService from "./services/worker.service.js";
 import passport from "passport";
 import configurePassport from "./services/passport.service.js";
 import http from "http";
 import socketService from "./services/socket.service.js";
 
-// Start background workers
-workerService.start();
+// Background workers now started per process or on primary (see below)
 
 const app = express();
 const server = http.createServer(app);
@@ -107,6 +108,8 @@ if (cluster.isPrimary && isProduction) {
   app.use("/api/routes", routeRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/payment", paymentRoutes);
+  app.use("/api/deliveries", deliveryRoutes);
+  app.use("/api/vehicles", vehicleRoutes);
 
   // Error handling middleware
   app.use((err, req, res, next) => {

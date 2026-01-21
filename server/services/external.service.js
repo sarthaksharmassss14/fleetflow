@@ -169,10 +169,12 @@ class ExternalService {
     if (!key || !query || query.length < 3) return []; 
 
     try {
+      console.log(`[TomTom] Searching for: ${query}`);
       const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json?key=${key}&limit=5&countrySet=IN`;
       const resp = await axios.get(url, { timeout: 3000 });
 
       if (resp.data && resp.data.results) {
+        console.log(`[TomTom] Found ${resp.data.results.length} results`);
         return resp.data.results.map(r => ({
           label: r.address.freeformAddress,
           value: r.address.freeformAddress,
@@ -181,7 +183,7 @@ class ExternalService {
       }
       return [];
     } catch (err) {
-      console.error(`[TomTom] Search failed: ${query}`, err.message);
+      console.error(`[TomTom] Search failed for ${query}:`, err.message);
       return [];
     }
   }
@@ -231,9 +233,14 @@ class ExternalService {
       try {
         resp = await axios.get(url, { timeout: 8000 });
       } catch (err) {
-        console.warn(`[TomTom] Primary routing failed for ${vehicleType}, attempting fallback to car.`);
-        const fallbackUrl = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&vehicleType=car&routeType=fastest&report=tollSummary`;
-        resp = await axios.get(fallbackUrl, { timeout: 8000 });
+        // Only attempt fallback if we weren't already trying 'car'
+        if (tomtomType === 'truck') {
+          console.warn(`[TomTom] Primary truck routing failed, attempting fallback to car.`);
+          const fallbackUrl = `https://api.tomtom.com/routing/1/calculateRoute/${locations}/json?key=${key}&traffic=true&travelMode=car&routeType=fastest&report=tollSummary`;
+          resp = await axios.get(fallbackUrl, { timeout: 8000 });
+        } else {
+          throw err; // Re-throw to be caught by the outer catch
+        }
       }
 
       const route = resp.data.routes[0].summary;
@@ -246,7 +253,7 @@ class ExternalService {
         hasTolls: tollSummary.length > 0
       };
     } catch (err) {
-      console.error("[TomTom] Fatal Routing Error:", err.message);
+      console.error("[TomTom] Fatal Routing Error:", err.response?.data?.error?.description || err.message);
       return null;
     }
   }
