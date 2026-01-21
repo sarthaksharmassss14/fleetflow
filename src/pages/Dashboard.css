@@ -1211,7 +1211,7 @@ select.btn-export option {
     gap: 12px;
     align-items: center; /* Center items for one-line look */
     padding-bottom: 8px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 [data-theme='dark'] .intel-item {

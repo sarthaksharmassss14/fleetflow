@@ -1338,7 +1338,7 @@ const Dashboard = () => {
                                           ? (
                                             <div>
                                               <div style={{fontWeight:500}}>{`Avg Speed: ${speed} km/h. Impact: ${delay > 0 ? `+${delay} min delay.` : 'No Delay.'}`}</div>
-                                              <div style={{fontSize:'1rem', marginTop:'4px', color:'#fbfcfeff'}}>
+                                              <div style={{fontSize:'0.85rem', marginTop:'4px', color:'var(--text-muted)'}}>
                                                 {delay > 2 ? "Heavy congestion impacting arrival times." : "Traffic flow is smooth with optimal velocity."}
                                               </div>
                                             </div>
@@ -1364,7 +1364,7 @@ const Dashboard = () => {
                                           ? (
                                             <div>
                                               <div style={{fontWeight:500}}>{`At ${weatherTarget === 'truck' ? 'Live Truck' : weatherTarget.charAt(0).toUpperCase() + weatherTarget.slice(1)}: ${weather.condition}, ${Math.round(weather.temperature)}°C`}</div>
-                                              <div style={{fontSize:'1rem', marginTop:'4px', color:'#fbfcfeff'}}>
+                                              <div style={{fontSize:'0.85rem', marginTop:'4px', color:'var(--text-muted)'}}>
                                                  {weather.condition.toLowerCase().match(/(rain|mist|fog|snow|storm)/) 
                                                    ? "Visibility/traction reduced. Caution advised." 
                                                    : "Weather is clear and optimal for transit."}
