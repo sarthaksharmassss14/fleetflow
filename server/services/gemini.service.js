@@ -70,8 +70,7 @@ class GeminiService {
         optimizationModel: this.groqModel
       };
     } catch (error) {
-      const fs = await import('fs');
-      fs.writeFileSync('server_error.log', `${new Date().toISOString()} - AI Error: ${error.stack || error.message}\nResolution: Fallback Triggered\n\n`);
+      console.error(`[AI Error Log] ${new Date().toISOString()}: ${error.stack || error.message}`);
 
       if (error.response?.data) {
         console.error("GROQ Detailed Error:", JSON.stringify(error.response.data, null, 2));
