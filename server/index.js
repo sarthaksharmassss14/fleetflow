@@ -82,13 +82,12 @@ if (cluster.isPrimary && isProduction) {
   
   // Database connection optimization for High Concurrency
   // Increase pool size to handle 1000+ concurrent connections distributed across workers
-  mongoose
+    mongoose
     .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/fleetflow", {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      maxPoolSize: 100, // Optimized for 1000+ users
-      serverSelectionTimeoutMS: 5000,
+      maxPoolSize: 50, // Reduced from 100 to stay within safely limits on free tiers
+      serverSelectionTimeoutMS: 15000, // Increased timeout 
       socketTimeoutMS: 45000,
+      family: 4 // Force IPv4 to avoid dual-stack issues on Render
     })
     .then(() => {
       console.log(`✅ Worker ${process.pid} connected to MongoDB`);
