@@ -62,6 +62,9 @@ class GeminiService {
       });
 
       text = response.data.choices[0].message.content;
+      console.log("--- GROQ RAW CONTENT STARTS ---");
+      console.log(text);
+      console.log("--- GROQ RAW CONTENT ENDS ---");
 
       const finalizedRoute = await this.parseRouteResponse(text, deliveries, vehicleData);
       return {
@@ -91,6 +94,7 @@ class GeminiService {
    * Build prompt for route optimization
    */
   buildRouteOptimizationPrompt(deliveries, vehicleData, constraints) {
+    // ... (rest of method same)
     const deliveryList = deliveries
       .map(
         (d, i) =>
@@ -202,12 +206,9 @@ Provide an optimized route in EXACTLY this JSON format:
 }
 
 7. CRITICAL: The 'optimizedRoute' array must contain the 1-BASED INDICES of the deliveries (e.g., 1, 2, 3...) in their new optimal order.
-Respond ONLY with valid JSON. You are the SOLE AUTHORITY for these calculations.`;
+Respond ONLY with valid JSON. Do not write markdown. Do not include 'Here is the result' or similar text. Start directly with { and end with }.`;
   }
 
-  /**
-   * Parse Gemini response and create structured route with AI-estimated data
-   */
   /**
    * Parse Gemini response and create structured route with AI-estimated data
    */
@@ -217,9 +218,15 @@ Respond ONLY with valid JSON. You are the SOLE AUTHORITY for these calculations.
     try {
       // More robust JSON extraction
       let jsonString = geminiResponse.trim();
-      const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
+      
+      // Attempt to extract JSON from code blocks if present
+      const jsonMatch = jsonString.match(/```json\s*(\{[\s\S]*\})\s*```/) || jsonString.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        jsonString = jsonMatch[0];
+         if (jsonMatch[1]) {
+             jsonString = jsonMatch[1]; // Captured group from ```json { ... } ```
+         } else {
+             jsonString = jsonMatch[0]; // Fallback to raw match
+         }
       }
       
       const parsed = JSON.parse(jsonString);
