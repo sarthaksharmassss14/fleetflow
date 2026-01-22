@@ -26,15 +26,34 @@ git push origin main
 5. Click **Apply**.
 
 ## 4. Post-Deployment Configuration (CRITICAL)
-Once the services are created, you MUST manually set the "Sensitive" environment variables in the Render Dashboard for the **Backend Service**:
+Once the services are created, you MUST manually set the "Sensitive" environment variables in the Render Dashboard.
 
+### 4.1. Get Your URLs
+After the services are created (even if they fail initially), note down their URLs from the Dashboard:
+- **Backend URL**: `https://fleetflow-backend.onrender.com` (example)
+- **Frontend URL**: `https://fleetflow-frontend.onrender.com` (example)
+
+### 4.2. Configure Backend Service
 1. Open `fleetflow-backend` -> **Environment**.
 2. Add/Update these values:
-   - `MONGO_URI`: ...
+   - `MONGO_URI`: Your MongoDB connection string.
+   - `CLIENT_URL`: **Paste your Frontend URL here** (remove trailing slash).
+   - `BACKEND_URL`: **Paste your Backend URL here** (remove trailing slash).
+   - `GOOGLE_CALLBACK_URL`: `https://<YOUR_BACKEND_URL>/api/auth/google/callback`
    - `GOOGLE_CLIENT_ID`: ...
    - `GOOGLE_CLIENT_SECRET`: ...
    - `GROQ_API_KEY`: ...
-   - (And other API keys as needed)
+   - `JWT_SECRET`: (Click 'Generate' or type a random string)
+
+### 4.3. Configure Frontend Service
+1. Open `fleetflow-frontend` -> **Environment**.
+2. Add/Update:
+   - `VITE_API_URL`: **Paste your Backend URL here** (must start with `https://` and have NO trailing slash, e.g., `https://fleetflow-backend.onrender.com/api`).
+     *Note: If you copied the backend root URL, make sure to append `/api` if your code expects it, OR just the root if your `config/api.js` handles it. Based on your code, just the root `https://...` is fine if the code appends `/api`, BUT safer to put `https://.../api` if you are unsure. Let's stick to: `https://<YOUR_BACKEND_URL>/api`*
+   - `VITE_TOMTOM_API_KEY`: ...
+   - `VITE_OPENWEATHER_API_KEY`: ...
+
+3. **Trigger a Redeploy** of the Frontend so it picks up the new `VITE_API_URL`.
 
 ## 5. OAuth Configuration (Google Cloud Console)
 Update your Google Cloud Console Credentials to allow the Render URL:

@@ -17,17 +17,11 @@ services:
       - key: PORT
         value: 10000
       - key: CLIENT_URL
-        fromService:
-          type: web
-          name: fleetflow-frontend
-          property: url
+        sync: false
       - key: BACKEND_URL
-        fromService:
-          type: web
-          name: fleetflow-backend
-          property: url
+        sync: false
       - key: GOOGLE_CALLBACK_URL
-        generateValue: true # Placeholder: Update this in dashboard to: https://<backend-url>/api/auth/google/callback
+        sync: false
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET
@@ -69,10 +63,7 @@ services:
     # Environment Variables (Build Time)
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: fleetflow-backend
-          property: url
+        sync: false
       - key: VITE_TOMTOM_API_KEY
         sync: false
       - key: VITE_OPENWEATHER_API_KEY
