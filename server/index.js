@@ -56,15 +56,29 @@ configurePassport();
 app.use(passport.initialize());
 
 // Database connection
+// Database connection
 const connectDB = async () => {
+  console.log("🔄 Attempting to connect to MongoDB...");
+  const uri = process.env.MONGODB_URI;
+  
+  if (!uri) {
+    console.error("❌ MONGODB_URI is undefined!");
+    process.exit(1);
+  }
+  
+  console.log(`ℹ️ URI found (starts with): ${uri.substring(0, 15)}...`);
+
   try {
-    await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/fleetflow", {
-      // Simplest configuration for Atlas
+    // Add a 5-second timeout to force a failure if it hangs
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000, 
+      connectTimeoutMS: 5000,
     });
     console.log("✅ Connected to MongoDB");
   } catch (error) {
-    console.error("❌ MongoDB connection error:", error);
-    // Exit process to let Render restart the service
+    console.error("❌ MongoDB connection error:", error.message);
+    if (error.reason) console.error("Reason:", error.reason);
+    // Exit to restart
     process.exit(1);
   }
 };
