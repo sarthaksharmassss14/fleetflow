@@ -7,7 +7,7 @@ class GeminiService {
   constructor() {
     this.provider = 'groq';
     this.groqKey = process.env.GROQ_API_KEY;
-    this.groqModel = process.env.GROQ_MODEL || "llama-3.1-8b-versatile";
+    this.groqModel = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
 
     console.log(`AI Provider: GROQ (Llama 3.1)`);
     console.log(`Groq Status: ${this.groqKey ? 'KEY FOUND' : 'MISSING'}`);
