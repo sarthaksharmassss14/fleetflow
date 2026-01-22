@@ -48,12 +48,13 @@ services:
   # --------------------------------------------
   # 2. Frontend Service (Static Site)
   # --------------------------------------------
-  - type: static
+  - type: web
     name: fleetflow-frontend
+    env: static
     branch: main
     
     buildCommand: npm install && npm run build
-    publishDir: ./dist
+    staticPublishPath: ./dist
     
     # Routes (SPA Support)
     routes:
