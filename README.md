@@ -1,129 +1,153 @@
-# FleetFlow - AI Logistics Route Optimizer
+# 🚛 FleetFlow - AI-Powered Logistics Optimization Platform
 
-A professional web platform for AI-powered logistics route optimization, designed for transportation companies to optimize delivery routes, reduce costs, and improve operational efficiency.
+FleetFlow is a modern logistics management platform designed to optimize delivery routes using advanced AI models (Llama 3 via Groq). It features real-time route planning, fleet management, and secure authentication.
+
+![FleetFlow Dashboard](https://via.placeholder.com/800x400?text=FleetFlow+App+Screenshot)
 
 ## 🚀 Features
 
-- **AI Route Generation**: Uses generative AI to create optimal routes based on real-time constraints
-- **Real-Time Updates**: Live traffic and weather data integration with automatic re-optimization
-- **Cost Analysis**: Calculate and compare route costs including fuel, time, and tolls
-- **Secure User Management**: Role-based access control (Admin, Dispatcher, Driver)
-- **Interactive Maps**: Visualize routes, stops, and live updates on interactive maps
-- **Exportable Schedules**: Export route plans to PDF, CSV, and iCal formats
+### 🧠 **AI Route Optimization**
+- **Smart Routing**: Generates the most efficient delivery routes using **Llama 3.3-70b**.
+- **Constraints Handling**: Respects Time Windows (e.g., "9 AM - 12 PM") and Priorities (Urgent > Normal).
+- **Physics-Based Feasibility**: Automatically flags impossible routes (e.g., traveling 200km in 1 hour).
+- **Fallback Logic**: Robust internal algorithms ensure routing works even if AI services are down.
 
-## 🛠️ Technology Stack
+### 📍 **Real-Time Logistics**
+- **Dynamic Cost Calculation**: Estimates fuel, wages, and tolls based on Indian road economics.
+- **Geocoding**: integrated with TomTom & OpenWeather for precise address resolution and route stats.
+- **Traffic Awareness**: Adjusts estimates based on real-time traffic conditions.
 
-- **Frontend**: React 18 with Vite
-- **Styling**: CSS3 with CSS Variables
-- **Build Tool**: Vite 5
-- **Package Manager**: npm
+### 🔐 **Enterprise-Grade Security**
+- **Google OAuth 2.0**: Seamless one-click login.
+- **Passport.js Authentication**: Secure session handling.
+- **Role-Based Access**: Granular permissions for Admins, Dispatchers, and Drivers.
 
-## 📦 Installation
-
-1. **Clone the repository** (or navigate to the project directory)
-
-```bash
-cd fleetflow
-```
-
-2. **Install dependencies**
-
-```bash
-npm install
-```
-
-3. **Start the development server**
-
-```bash
-npm run dev
-```
-
-The application will start on `http://localhost:3000`
-
-## 🏗️ Build for Production
-
-```bash
-npm run build
-```
-
-The built files will be in the `dist` directory.
-
-## 📁 Project Structure
-
-```
-fleetflow/
-├── src/
-│   ├── components/          # React components
-│   │   ├── Header.jsx      # Navigation header
-│   │   ├── Hero.jsx        # Hero section
-│   │   ├── Features.jsx    # Features showcase
-│   │   ├── HowItWorks.jsx  # Process explanation
-│   │   ├── Benefits.jsx    # Benefits section
-│   │   ├── Testimonials.jsx # Customer testimonials
-│   │   ├── CTA.jsx         # Call-to-action section
-│   │   └── Footer.jsx      # Footer component
-│   ├── App.jsx             # Main app component
-│   ├── main.jsx            # Entry point
-│   ├── index.css           # Global styles
-│   └── App.css             # App-specific styles
-├── index.html              # HTML template
-├── package.json            # Dependencies and scripts
-├── vite.config.js          # Vite configuration
-└── README.md               # This file
-```
-
-## 🎨 Design Features
-
-- **Modern UI**: Clean, professional design with gradient accents
-- **Responsive**: Fully responsive design that works on all devices
-- **Smooth Animations**: Subtle hover effects and transitions
-- **Accessible**: Semantic HTML and proper ARIA labels
-- **Fast**: Optimized build with Vite for fast load times
-
-## 🚦 Getting Started
-
-After running `npm run dev`, you can:
-
-- View the landing page with all sections
-- Navigate through the features
-- Explore the how-it-works section
-- Review testimonials and benefits
-
-## 📝 Development
-
-### Available Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-
-## 🔧 Customization
-
-### Colors
-
-Edit the CSS variables in `src/index.css`:
-
-```css
-:root {
-  --primary-color: #0066FF;
-  --secondary-color: #00D4AA;
-  --text-dark: #1A1A1A;
-  /* ... more variables */
-}
-```
-
-### Content
-
-Edit component files in `src/components/` to modify content, add sections, or customize layouts.
-
-## 📄 License
-
-This project is created for FleetFlow - AI Logistics Route Optimizer.
-
-## 🤝 Contributing
-
-This is a professional project for FleetFlow. For questions or support, please contact the development team.
+### ☁️ **Cloud Native**
+- **Deployment Ready**: Fully configured for **Render** (Docker + Static Site).
+- **Database**: Scalable **MongoDB Atlas** integration.
+- **Environment**: Zero-config deployment with automatic environment syncing.
 
 ---
 
-Built with ❤️ for efficient logistics operations
+## 🛠️ Tech Stack
+
+- **Frontend**: React (Vite), CSS3 (Glassmorphism UI)
+- **Backend**: Node.js, Express.js
+- **Database**: MongoDB Atlas
+- **AI Engine**: Groq SDK (Llama 3.3-70b-versatile)
+- **Maps**: TomTom API
+- **Auth**: Passport.js, JWT, Google OAuth
+
+---
+
+## 📦 Installation & Local Setup
+
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/yourusername/fleetflow.git
+    cd fleetflow
+    ```
+
+2.  **Install Dependencies**
+    ```bash
+    # Install Root/Frontend dependencies
+    npm install
+
+    # Install Backend dependencies
+    cd server
+    npm install
+    cd ..
+    ```
+
+3.  **Configure Environment**
+    Create a `.env` file in the root directory (or use the example provided):
+    ```env
+    # Server
+    PORT=5000
+    MONGODB_URI=your_mongodb_connection_string
+    JWT_SECRET=your_jwt_secret
+
+    # AI
+    GROQ_API_KEY=your_groq_api_key
+    GROQ_MODEL=llama-3.3-70b-versatile
+
+    # External Tools
+    TOMTOM_API_KEY=your_tomtom_key
+    WEATHER_API_KEY=your_weather_key
+    
+    # Auth
+    GOOGLE_CLIENT_ID=your_google_client_id
+    GOOGLE_CLIENT_SECRET=your_google_client_secret
+    CLIENT_URL=http://localhost:5173
+    GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
+    ```
+
+4.  **Run Locally**
+    ```bash
+    # Use concurrently to run client and server
+    npm run dev
+    ```
+    Access the app at `http://localhost:5173`.
+
+---
+
+## 🌐 Deployment (Render)
+
+This project is optimized for deployment on [Render](https://render.com).
+
+1.  **Create a New Blueprint**
+    - Connect your GitHub repo.
+    - Render will auto-detect `render.yaml`.
+    - It creates two services: `fleetflow-backend` (Docker) and `fleetflow-frontend` (Static).
+
+2.  **Set Environment Variables (Dashboard)**
+    After creation, manually set these in the Render Dashboard:
+
+    **Backend Service:**
+    - `MONGODB_URI`: Connection string from Atlas. (Must whitelist `0.0.0.0/0` in Atlas Network Access).
+    - `CLIENT_URL`: `https://your-frontend-url.onrender.com`
+    - `BACKEND_URL`: `https://your-backend-url.onrender.com`
+    - `GOOGLE_CALLBACK_URL`: `https://your-backend-url.onrender.com/api/auth/google/callback`
+    - Keys: `GROQ_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, etc.
+
+    **Frontend Service:**
+    - `VITE_API_URL`: `https://your-backend-url.onrender.com/api`
+    - `VITE_TOMTOM_API_KEY`, `VITE_OPENWEATHER_API_KEY`
+
+3.  **Update Google Cloud Config**
+    - Add your **Frontend URL** to "Authorized JavaScript Origins".
+    - Add your **Backend Callback URL** to "Authorized Redirect URIs".
+
+---
+
+## 📂 Project Structure
+
+```
+fleetflow/
+├── server/                 # Backend (Node/Express)
+│   ├── models/             # Mongoose Schemas (Route, User, etc.)
+│   ├── routes/             # API Endpoints
+│   ├── services/           # Business Logic (AI, Socket, Auth)
+│   └── index.js            # Entry Point
+├── src/                    # Frontend (React)
+│   ├── components/         # Reusable UI Components
+│   ├── context/            # Auth & State Management
+│   ├── pages/              # App Pages (Dashboard, Tracking, etc.)
+│   └── main.jsx            # React Entry
+├── render.yaml             # Deployment Configuration
+└── package.json            # Root Scripts
+```
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repo.
+2. Create a feature branch: `git checkout -b feature/AmazingFeature`.
+3. Commit your changes: `git commit -m 'Add some AmazingFeature'`.
+4. Push to the branch: `git push origin feature/AmazingFeature`.
+5. Open a Pull Request.
+
+---
+
+**Built with ❤️ for Modern Logistics.**
