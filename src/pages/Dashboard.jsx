@@ -131,13 +131,9 @@ const Dashboard = () => {
 
   const fetchVehicles = async () => {
     try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/vehicles`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (data.success) {
-            setVehicles(data.data);
+        const res = await apiService.request('/vehicles');
+        if (res.success) {
+            setVehicles(res.data);
         }
     } catch (error) {
         console.error("Error fetching vehicles:", error);

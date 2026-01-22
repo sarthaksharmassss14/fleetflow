@@ -1,6 +1,17 @@
 import { io } from "socket.io-client";
 
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5000";
+// Use window.location.origin for production (works with HTTPS)
+// Fallback to VITE_API_URL if available, otherwise localhost
+const getSocketURL = () => {
+  if (typeof window !== 'undefined') {
+    // In browser, use current origin (works for both HTTP and HTTPS)
+    return window.location.origin;
+  }
+  // Fallback for SSR or build time
+  return import.meta.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5000";
+};
+
+const SOCKET_URL = getSocketURL();
 
 class SocketClient {
   constructor() {

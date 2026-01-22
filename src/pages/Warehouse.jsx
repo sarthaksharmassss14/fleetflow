@@ -25,13 +25,9 @@ const Warehouse = () => {
 
     const fetchDeliveries = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.success) {
-                setDeliveries(data.data);
+            const res = await apiService.request('/deliveries');
+            if (res.success) {
+                setDeliveries(res.data);
             }
             setLoading(false);
         } catch (error) {
@@ -91,7 +87,6 @@ const Warehouse = () => {
 
     const handleAdd = async () => {
         try {
-            const token = localStorage.getItem('token');
             const payload = {
                 customerName: formData.customer,
                 address: formData.address,
@@ -105,32 +100,27 @@ const Warehouse = () => {
             console.log("📦 Form Data:", formData);
             console.log("🚀 Sending Payload:", payload);
 
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries`, {
+            const res = await apiService.request('/deliveries', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
                 body: JSON.stringify(payload)
             });
-            const data = await res.json();
             
-            console.log("✅ Backend Response:", data);
+            console.log("✅ Backend Response:", res);
             
-            if (data.success) {
-                setDeliveries([data.data, ...deliveries]);
+            if (res.success) {
+                setDeliveries([res.data, ...deliveries]);
                 closeModal();
             } else {
-                alert(data.message);
+                alert(res.message);
             }
         } catch (error) {
             console.error("Error adding delivery:", error);
+            alert(error.message || "Failed to add delivery");
         }
     };
 
     const handleUpdate = async () => {
         try {
-            const token = localStorage.getItem('token');
             const payload = {
                 customerName: formData.customer,
                 address: formData.address,
@@ -141,42 +131,36 @@ const Warehouse = () => {
                 }
             };
             
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries/${editingId}`, {
+            const res = await apiService.request(`/deliveries/${editingId}`, {
                 method: 'PATCH',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
                 body: JSON.stringify(payload)
             });
-            const data = await res.json();
-            if (data.success) {
-                setDeliveries(deliveries.map(d => d._id === editingId ? data.data : d));
+            if (res.success) {
+                setDeliveries(deliveries.map(d => d._id === editingId ? res.data : d));
                 closeModal();
             } else {
-                alert(data.message);
+                alert(res.message);
             }
         } catch (error) {
             console.error("Error updating delivery:", error);
+            alert(error.message || "Failed to update delivery");
         }
     };
 
     const handleDelete = async (id) => {
         if (!window.confirm("Are you sure you want to delete this delivery?")) return;
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/deliveries/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
+            const res = await apiService.request(`/deliveries/${id}`, {
+                method: 'DELETE'
             });
-            const data = await res.json();
-            if (data.success) {
+            if (res.success) {
                 setDeliveries(deliveries.filter(d => d._id !== id));
             } else {
-                alert(data.message);
+                alert(res.message);
             }
         } catch (error) {
             console.error("Error deleting delivery:", error);
+            alert(error.message || "Failed to delete delivery");
         }
     };
 

@@ -28,6 +28,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      # Mount SSL certificates
+      - ./ssl:/etc/nginx/ssl:ro
+      # Mount certbot webroot for certificate renewal
+      - ./certbot/www:/var/www/certbot:ro
     depends_on:
       - backend
     networks:

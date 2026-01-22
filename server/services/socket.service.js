@@ -7,13 +7,24 @@ class SocketService {
   }
 
   init(server) {
+    const allowedOrigins = [
+      process.env.CLIENT_URL,
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:5173',
+      'https://13-211-252-48.sslip.io',
+      'https://fleet-flow.duckdns.org'
+    ].filter(Boolean);
+
     this.io = new Server(server, {
       cors: {
-        origin: process.env.CLIENT_URL || "http://localhost:3000",
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
       },
       pingTimeout: 60000,
+      transports: ['websocket', 'polling']
     });
 
     console.log("🔌 Socket.io initialized");

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import apiService from '../services/api.service';
 
 const Finance = () => {
     const navigate = useNavigate();
@@ -22,14 +23,10 @@ const Finance = () => {
 
     const fetchData = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/routes`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
+            const res = await apiService.getRoutes();
             
-            if (data.data) {
-                calculateMetrices(data.data);
+            if (res.success && res.data) {
+                calculateMetrices(res.data);
             }
             setLoading(false);
         } catch (error) {

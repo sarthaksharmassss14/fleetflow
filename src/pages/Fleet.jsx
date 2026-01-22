@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import apiService from '../services/api.service';
 
 const Fleet = () => {
     const navigate = useNavigate();
@@ -21,13 +22,9 @@ const Fleet = () => {
 
     const fetchVehicles = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/vehicles`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.success) {
-                setVehicles(data.data);
+            const res = await apiService.request('/vehicles');
+            if (res.success) {
+                setVehicles(res.data);
             }
             setLoading(false);
         } catch (error) {
@@ -46,66 +43,54 @@ const Fleet = () => {
 
     const handleAdd = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/vehicles`, {
+            const res = await apiService.request('/vehicles', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
                 body: JSON.stringify(formData)
             });
-            const data = await res.json();
-            if (data.success) {
-                setVehicles([data.data, ...vehicles]);
+            if (res.success) {
+                setVehicles([res.data, ...vehicles]);
                 closeModal();
             } else {
-                alert(data.message);
+                alert(res.message);
             }
         } catch (error) {
             console.error("Error adding vehicle:", error);
+            alert(error.message || "Failed to add vehicle");
         }
     };
 
     const handleUpdate = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/vehicles/${editingId}`, {
+            const res = await apiService.request(`/vehicles/${editingId}`, {
                 method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
                 body: JSON.stringify(formData)
             });
-            const data = await res.json();
-            if (data.success) {
-                setVehicles(vehicles.map(v => v._id === editingId ? data.data : v));
+            if (res.success) {
+                setVehicles(vehicles.map(v => v._id === editingId ? res.data : v));
                 closeModal();
             } else {
-                alert(data.message);
+                alert(res.message);
             }
         } catch (error) {
             console.error("Error updating vehicle:", error);
+            alert(error.message || "Failed to update vehicle");
         }
     };
 
     const handleDelete = async (id) => {
         if (!window.confirm("Are you sure you want to delete this vehicle?")) return;
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/vehicles/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
+            const res = await apiService.request(`/vehicles/${id}`, {
+                method: 'DELETE'
             });
-            const data = await res.json();
-            if (data.success) {
+            if (res.success) {
                 setVehicles(vehicles.filter(v => v._id !== id));
             } else {
-                alert(data.message);
+                alert(res.message);
             }
         } catch (error) {
             console.error("Error deleting vehicle:", error);
+            alert(error.message || "Failed to delete vehicle");
         }
     };
 

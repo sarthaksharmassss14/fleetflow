@@ -19,6 +19,13 @@ dist-ssr
 .env.vercel
 .env.vercel.local
 
+# SSL Certificates (DO NOT COMMIT)
+ssl/
+certbot/
+*.pem
+*.key
+*.crt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
