@@ -185,7 +185,12 @@ router.get(
       }
 
       // Use CLIENT_URL from env, or fallback to the request's origin
-      let clientUrl = process.env.CLIENT_URL || `${req.protocol}://${req.get('host')}`;
+      let clientUrl = process.env.CLIENT_URL;
+      
+      if (!clientUrl) {
+           console.warn("CLIENT_URL env var is missing! using request header origin");
+           clientUrl = `${req.protocol}://${req.get('host')}`;
+      }
       
       console.log(`[OAuth] Redirecting to clientUrl: ${clientUrl}`);
 
