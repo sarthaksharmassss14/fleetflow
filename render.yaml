@@ -1,7 +1,3 @@
-# ============================================
-# RENDER.COM DEPLOYMENT CONFIGURATION
-# ============================================
-
 services:
   # --------------------------------------------
   # 1. Backend Service (Docker)
@@ -20,14 +16,18 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: WEB_CONCURRENCY
-        value: 1
       - key: CLIENT_URL
-        sync: false
+        fromService:
+          type: web
+          name: fleetflow-frontend
+          property: url
       - key: BACKEND_URL
-        sync: false
+        fromService:
+          type: web
+          name: fleetflow-backend
+          property: url
       - key: GOOGLE_CALLBACK_URL
-        sync: false
+        generateValue: true # Placeholder: Update this in dashboard to: https://<backend-url>/api/auth/google/callback
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET
@@ -69,7 +69,10 @@ services:
     # Environment Variables (Build Time)
     envVars:
       - key: VITE_API_URL
-        sync: false
+        fromService:
+          type: web
+          name: fleetflow-backend
+          property: url
       - key: VITE_TOMTOM_API_KEY
         sync: false
       - key: VITE_OPENWEATHER_API_KEY
