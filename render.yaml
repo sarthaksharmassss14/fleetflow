@@ -23,15 +23,11 @@ services:
       - key: WEB_CONCURRENCY
         value: 1
       - key: CLIENT_URL
-        fromService:
-          type: web
-          name: fleetflow-frontend
-          property: url
+        sync: false
       - key: BACKEND_URL
-        fromService:
-          type: web
-          name: fleetflow-backend
-          property: url
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET
@@ -56,7 +52,6 @@ services:
     name: fleetflow-frontend
     env: static
     plan: free
-    region: singapore
     branch: main
     
     buildCommand: npm install && npm run build
@@ -71,10 +66,7 @@ services:
     # Environment Variables (Build Time)
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: fleetflow-backend
-          property: url
+        sync: false
       - key: VITE_TOMTOM_API_KEY
         sync: false
       - key: VITE_OPENWEATHER_API_KEY
