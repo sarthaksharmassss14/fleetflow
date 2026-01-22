@@ -2,7 +2,8 @@
 
 FleetFlow is a modern logistics management platform designed to optimize delivery routes using advanced AI models (Llama 3 via Groq). It features real-time route planning, fleet management, and secure authentication.
 
-![FleetFlow Dashboard](https://via.placeholder.com/800x400?text=FleetFlow+App+Screenshot)
+![FleetFlow Dashboard](![Uploading Screenshot 2026-01-20 163643.png…]()
+)
 
 ## 🚀 Features
 
