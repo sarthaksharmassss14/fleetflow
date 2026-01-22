@@ -14,11 +14,7 @@ export const aiRateLimiter = rateLimit({
 	},
 	standardHeaders: true,
 	legacyHeaders: false,
-    keyGenerator: (req) => {
-        // Apply limit globally or per-IP. Since Groq limit is per API Key (Global), ideally we should limit globally.
-        // For now, limiting per IP is a safe client-side guard.
-        return req.ip; 
-    },
+
     skipFailedRequests: true // Don't count failed requests against the quota
 });
 

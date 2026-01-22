@@ -8,6 +8,14 @@
   --text-muted: var(--text-light);
   --border-radius: 12px;
   --shadow-premium: var(--shadow-md);
+
+  /* Feature Card Variables - Light Mode defaults */
+  --card-feature-bg: #ffffff;
+  --text-main-feature: #1e293b;
+  --text-muted-feature: #64748b;
+  --text-sub-feature: #94a3b8;
+  --card-feature-border: 1px solid #e2e8f0;
+  --card-feature-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 [data-theme='dark'] .btn-export {
@@ -15,6 +23,17 @@
   border: none;
   color: #ffffff;
 }
+
+[data-theme='dark'] {
+  /* Feature Card Variables - Dark Mode override */
+  --card-feature-bg: linear-gradient(145deg, #1e293b, #0f172a);
+  --text-main-feature: #f8fafc;
+  --text-muted-feature: #94a3b8;
+  --text-sub-feature: #64748b;
+  --card-feature-border: none;
+  --card-feature-shadow: none;
+}
+
 
 [data-theme='dark'] .btn-export:hover {
   opacity: 0.9;
@@ -1467,3 +1486,36 @@ select.btn-export option {
 [data-theme='dark'] .stat-card.urgent .sc-val {
   color: #fca5a5; /* Light Red for urgent numbers */
 }
+
+/* Feature Card Theming */
+.stat-card-feature {
+    background: var(--card-feature-bg);
+    border: var(--card-feature-border);
+    box-shadow: var(--card-feature-shadow);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    min-height: 140px;
+    padding: 1.5rem;
+    border-radius: 12px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+}
+
+.stat-card-feature:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15);
+}
+
+.warehouse-card { border-left: 4px solid #3b82f6; }
+.fleet-card { border-left: 4px solid #f97316; }
+.finance-card { border-left: 4px solid #10b981; }
+
+/* Adjust inheritence for sc-info inside these feature cards */
+.stat-card-feature .sc-info {
+    display: flex;
+    flex-direction: column;
+}
+

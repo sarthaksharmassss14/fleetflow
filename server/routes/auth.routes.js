@@ -185,8 +185,9 @@ router.get(
       }
 
       // Use CLIENT_URL from env, or fallback to the request's origin
-      const clientUrl = process.env.CLIENT_URL || `${req.protocol}://${req.get('host')}`;
-      console.log(`[OAuth] Redirecting to clientUrl: ${clientUrl} (Protocol: ${req.protocol}, Host: ${req.get('host')})`);
+      let clientUrl = process.env.CLIENT_URL || `${req.protocol}://${req.get('host')}`;
+      
+      console.log(`[OAuth] Redirecting to clientUrl: ${clientUrl}`);
 
 
 

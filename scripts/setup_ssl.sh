@@ -5,7 +5,7 @@
 
 set -e
 
-DOMAIN="fleet-flow.duckdns.org"
+DOMAIN="13-211-252-48.sslip.io"
 EMAIL="${SSL_EMAIL:-sarthaksharma0234@gmail.com}"  # Set SSL_EMAIL env var or change default
 SSL_DIR="./ssl"
 CERTBOT_DIR="./certbot"

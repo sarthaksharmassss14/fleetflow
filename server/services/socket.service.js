@@ -14,7 +14,7 @@ class SocketService {
       'http://localhost:3002',
       'http://localhost:5173',
       'https://13-211-252-48.sslip.io',
-      'https://fleet-flow.duckdns.org'
+      'https://localhost'
     ].filter(Boolean);
 
     this.io = new Server(server, {

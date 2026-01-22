@@ -1,53 +1,84 @@
 # ============================================
 # RENDER.COM DEPLOYMENT CONFIGURATION
 # ============================================
-# This file tells Render how to build and run your app
 
 services:
-  # Backend Web Service
+  # --------------------------------------------
+  # 1. Backend Service (Docker)
+  # --------------------------------------------
   - type: web
-    name: fleetflow-api
+    name: fleetflow-backend
     env: docker
-    dockerfilePath: ./Dockerfile
-    region: singapore  # Change to your preferred region
-    plan: free  # Free tier
-    branch: main  # Deploy from main branch
-    
-    # Health check endpoint
+    plan: free
+    region: singapore
+    branch: main
     healthCheckPath: /api/health
     
-    # Environment variables (set these in Render dashboard)
+    # Environment Variables
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
-      - key: MONGODB_URI
-        sync: false  # Set manually in dashboard
+      - key: WEB_CONCURRENCY
+        value: 1
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: fleetflow-frontend
+          property: url
+      - key: BACKEND_URL
+        fromService:
+          type: web
+          name: fleetflow-backend
+          property: url
+      - key: MONGO_URI
+        sync: false
       - key: JWT_SECRET
-        generateValue: true  # Auto-generate secure secret
+        generateValue: true
       - key: AI_PROVIDER
         value: groq
       - key: GROQ_API_KEY
-        sync: false
-      - key: GROQ_MODEL
-        value: llama-3.1-8b-instant
-      - key: TOMTOM_API_KEY
-        sync: false
-      - key: WEATHER_API_KEY
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: CLIENT_URL
-        value: https://fleetflow.vercel.app
-      - key: RAZORPAY_KEY_ID
+      - key: TOMTOM_API_KEY
         sync: false
-      - key: RAZORPAY_KEY_SECRET
+      - key: WEATHER_API_KEY
         sync: false
-      - key: CORS_ORIGIN
-        value: https://fleetflow.vercel.app
+
+  # --------------------------------------------
+  # 2. Frontend Service (Static Site)
+  # --------------------------------------------
+  - type: web
+    name: fleetflow-frontend
+    env: static
+    plan: free
+    region: singapore
+    branch: main
     
-    # Auto-deploy on push
-    autoDeploy: true
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    
+    # Routes (SPA Support)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    # Environment Variables (Build Time)
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: fleetflow-backend
+          property: url
+      - key: VITE_TOMTOM_API_KEY
+        sync: false
+      - key: VITE_OPENWEATHER_API_KEY
+        sync: false
+
+# Database is assumed to be external (Atlas)
+

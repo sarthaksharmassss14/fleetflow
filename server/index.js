@@ -38,7 +38,7 @@ socketService.init(server);
 // Middleware
 // Middleware
 app.use(cors({
-  origin: [process.env.CLIENT_URL, 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:5173'],
+  origin: [process.env.CLIENT_URL, 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:5173', 'https://13-211-252-48.sslip.io', 'https://localhost'],
   credentials: true
 }));
 app.use(express.json());
@@ -55,7 +55,7 @@ import os from "node:os";
 // Cluster API for Scalability (Support 1000+ Concurrent Users)
 // In production, use all cores. In dev, use 2 for testing.
 // Note: Background workers should ideally run on a separate process or only on Primary.
-const numCPUs = os.cpus().length;
+const numCPUs = process.env.WEB_CONCURRENCY || os.cpus().length;
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Initialize Cluster for High Availability

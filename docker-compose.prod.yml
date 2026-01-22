@@ -12,6 +12,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=10000
+      - CLIENT_URL=https://13-211-252-48.sslip.io
+      - GOOGLE_CALLBACK_URL=https://13-211-252-48.sslip.io/api/auth/google/callback
     networks:
       - fleetflow-network
 

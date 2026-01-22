@@ -1439,22 +1439,14 @@ const Dashboard = () => {
 
 
 
-                        <div className="stat-card" 
-                             style={{ 
-                                 background: 'linear-gradient(145deg, #1e293b, #0f172a)', 
-                                 borderLeft: '4px solid #3b82f6',
-                                 cursor: 'pointer',
-                                 position: 'relative',
-                                 overflow: 'hidden',
-                                 minHeight: '140px'
-                             }}
+                        <div className="stat-card stat-card-feature warehouse-card" 
                              onClick={() => navigate('/warehouse')}
                         >
                             <span className="sc-icon" style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', boxShadow: 'none' }}>🏭</span>
                             <div className="sc-info">
-                                <span className="sc-label" style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>WAREHOUSE</span>
-                                <span className="sc-val" style={{ color: '#f8fafc', fontSize: '1.5rem' }}>Inventory</span>
-                                <span style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                <span className="sc-label" style={{ color: 'var(--text-muted-feature)', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>WAREHOUSE</span>
+                                <span className="sc-val" style={{ color: 'var(--text-main-feature)', fontSize: '1.5rem' }}>Inventory</span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-sub-feature)', marginTop: '2px' }}>
                                     Pending Orders & Routing
                                 </span>
                             </div>
@@ -1462,22 +1454,14 @@ const Dashboard = () => {
                         </div>
 
                         {/* 2. My Fleet (Vehicle Registry) */}
-                        <div className="stat-card" 
-                             style={{ 
-                                 background: 'linear-gradient(145deg, #1e293b, #0f172a)', 
-                                 borderLeft: '4px solid #f97316',
-                                 cursor: 'pointer',
-                                 position: 'relative',
-                                 overflow: 'hidden',
-                                 minHeight: '140px'
-                             }}
+                        <div className="stat-card stat-card-feature fleet-card" 
                              onClick={() => navigate('/fleet')}
                         >
                             <span className="sc-icon" style={{ background: 'rgba(249, 115, 22, 0.2)', color: '#fb923c', boxShadow: 'none' }}>🚛</span>
                             <div className="sc-info">
-                                <span className="sc-label" style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>FLEET</span>
-                                <span className="sc-val" style={{ color: '#f8fafc', fontSize: '1.5rem' }}>Vehicles</span>
-                                <span style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                <span className="sc-label" style={{ color: 'var(--text-muted-feature)', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>FLEET</span>
+                                <span className="sc-val" style={{ color: 'var(--text-main-feature)', fontSize: '1.5rem' }}>Vehicles</span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-sub-feature)', marginTop: '2px' }}>
                                     Manage Trucks & Vans
                                 </span>
                             </div>
@@ -1485,22 +1469,14 @@ const Dashboard = () => {
                         </div>
 
                          {/* 3. Financial Reports */}
-                         <div className="stat-card" 
-                             style={{ 
-                                 background: 'linear-gradient(145deg, #1e293b, #0f172a)', 
-                                 borderLeft: '4px solid #10b981',
-                                 cursor: 'pointer',
-                                 position: 'relative',
-                                 overflow: 'hidden',
-                                 minHeight: '140px'
-                             }}
+                         <div className="stat-card stat-card-feature finance-card" 
                              onClick={() => navigate('/finance')}
                         >
                             <span className="sc-icon" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', boxShadow: 'none' }}>💰</span>
                             <div className="sc-info">
-                                <span className="sc-label" style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>FINANCE</span>
-                                <span className="sc-val" style={{ color: '#f8fafc', fontSize: '1.5rem' }}>Analytics</span>
-                                <span style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                <span className="sc-label" style={{ color: 'var(--text-muted-feature)', fontWeight: 600, fontSize: '0.75rem', letterSpacing: '0.5px' }}>FINANCE</span>
+                                <span className="sc-val" style={{ color: 'var(--text-main-feature)', fontSize: '1.5rem' }}>Analytics</span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-sub-feature)', marginTop: '2px' }}>
                                     Fuel Costs & Wages
                                 </span>
                             </div>

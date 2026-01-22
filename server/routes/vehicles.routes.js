@@ -49,8 +49,12 @@ router.put("/:id", authenticate, async (req, res) => {
   try {
     const { name, reg, type, capacity, fuel, mileage, status } = req.body;
     
-    // Check ownership
-    const vehicle = await Vehicle.findOne({ _id: req.params.id, userId: req.user._id });
+    // Check ownership or admin role
+    const query = { _id: req.params.id };
+    if (req.user.role !== 'admin') {
+        query.userId = req.user._id;
+    }
+    const vehicle = await Vehicle.findOne(query);
     if (!vehicle) {
         return res.status(404).json({ success: false, message: "Vehicle not found or unauthorized" });
     }
@@ -73,7 +77,11 @@ router.put("/:id", authenticate, async (req, res) => {
 // Delete a vehicle
 router.delete("/:id", authenticate, async (req, res) => {
   try {
-    const result = await Vehicle.deleteOne({ _id: req.params.id, userId: req.user._id });
+    const query = { _id: req.params.id };
+    if (req.user.role !== 'admin') {
+        query.userId = req.user._id;
+    }
+    const result = await Vehicle.deleteOne(query);
     
     if (result.deletedCount === 0) {
         return res.status(404).json({ success: false, message: "Vehicle not found or unauthorized" });
