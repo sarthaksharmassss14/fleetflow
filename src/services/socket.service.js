@@ -3,12 +3,18 @@ import { io } from "socket.io-client";
 // Use window.location.origin for production (works with HTTPS)
 // Fallback to VITE_API_URL if available, otherwise localhost
 const getSocketURL = () => {
+  // 1. Production/Render: Use the configured Backend URL
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace('/api', '');
+  }
+
+  // 2. Browser fallback (Development/Same-origin)
   if (typeof window !== 'undefined') {
-    // In browser, use current origin (works for both HTTP and HTTPS)
     return window.location.origin;
   }
-  // Fallback for SSR or build time
-  return import.meta.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5000";
+  
+  // 3. Last resort
+  return "http://localhost:5000";
 };
 
 const SOCKET_URL = getSocketURL();
