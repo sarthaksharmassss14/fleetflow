@@ -56,22 +56,20 @@ configurePassport();
 app.use(passport.initialize());
 
 // Database connection
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/fleetflow", {
-    maxPoolSize: 50,
-    serverSelectionTimeoutMS: 15000,
-    socketTimeoutMS: 45000,
-    family: 4 // Force IPv4 to avoid dual-stack issues on Render
-  })
-  .then(() => {
-    console.log(`✅ Connected to MongoDB`);
-  })
-  .catch((error) => {
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/fleetflow", {
+      // Simplest configuration for Atlas
+    });
+    console.log("✅ Connected to MongoDB");
+  } catch (error) {
     console.error("❌ MongoDB connection error:", error);
-  });
+    // Exit process to let Render restart the service
+    process.exit(1);
+  }
+};
 
-// Start background workers
-// workerService.start();
+connectDB();
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
