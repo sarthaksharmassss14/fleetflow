@@ -9,6 +9,7 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception thrown:', err);
 });
 
+import express from "express";
 import session from "express-session";
 
 // ... imports remain same ...
