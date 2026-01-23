@@ -11,8 +11,19 @@ process.on('uncaughtException', (err) => {
 
 import express from "express";
 import session from "express-session";
-
-// ... imports remain same ...
+import cors from "cors";
+import mongoose from "mongoose";
+import http from "http";
+import passport from "passport";
+import authRoutes from "./routes/auth.routes.js";
+import routeRoutes from "./routes/routes.routes.js";
+import userRoutes from "./routes/user.routes.js";
+import paymentRoutes from "./routes/payment.routes.js";
+import deliveryRoutes from "./routes/deliveries.routes.js";
+import vehicleRoutes from "./routes/vehicles.routes.js";
+import workerService from "./services/worker.service.js";
+import configurePassport from "./services/passport.service.js";
+import socketService from "./services/socket.service.js";
 
 const app = express();
 app.set('trust proxy', 1); // Enable trust proxy for Nginx/Render to detect HTTPS
