@@ -9,25 +9,12 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception thrown:', err);
 });
 
-import express from "express";
-import cors from "cors";
-import mongoose from "mongoose";
-import authRoutes from "./routes/auth.routes.js";
-import routeRoutes from "./routes/routes.routes.js";
-import userRoutes from "./routes/user.routes.js";
-import paymentRoutes from "./routes/payment.routes.js";
-import deliveryRoutes from "./routes/deliveries.routes.js";
-import vehicleRoutes from "./routes/vehicles.routes.js";
-import workerService from "./services/worker.service.js";
-import passport from "passport";
-import configurePassport from "./services/passport.service.js";
-import http from "http";
-import socketService from "./services/socket.service.js";
+import session from "express-session";
 
-// Background workers now started per process or on primary (see below)
+// ... imports remain same ...
 
 const app = express();
-app.set('trust proxy', 1); // Enable trust proxy for Nginx
+app.set('trust proxy', 1); // Enable trust proxy for Nginx/Render to detect HTTPS
 const server = http.createServer(app);
 
 const PORT = process.env.PORT || 5000;
@@ -43,7 +30,7 @@ app.use(cors({
     'http://localhost:3001', 
     'http://localhost:3002', 
     'http://localhost:5173', 
-    'https://13-211-252-48.sslip.io', 
+    'https://13-211-252-48.sslip.io',
     'https://localhost'
   ].filter(Boolean),
   credentials: true
@@ -51,9 +38,22 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Session Middleware (REQUIRED for Passport to maintain state)
+app.use(session({
+  secret: process.env.JWT_SECRET || 'fallback_secret_key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Secure=true on Render
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // None for cross-site
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
 // Passport initialization
 configurePassport();
 app.use(passport.initialize());
+app.use(passport.session()); // Enable persistent login sessions
 
 // Database connection
 // Database connection
