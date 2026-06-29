@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import API_BASE_URL from '../config/api';
 import './Auth.css';
 
 const Signup = () => {
@@ -183,7 +184,7 @@ const Signup = () => {
 
             <button 
               className="btn-google" 
-              onClick={() => window.location.href = '/api/auth/google'}
+              onClick={() => window.location.href = `${API_BASE_URL}/auth/google`}
             >
 
               <svg className="google-icon" viewBox="0 0 48 48">
